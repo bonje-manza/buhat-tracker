@@ -88,11 +88,11 @@
 - Produces: `fun e1rmTrend(history: List<HistorySession>, exerciseId: String, rangeDays: Int?, nowMillis: Long): List<TrendPoint>`
 - Produces: `enum class WeightUnit { KG, LB }`, `fun kgToLb(kg: Double): Double`, `fun lbToKg(lb: Double): Double`, `fun formatWeight(kg: Double, unit: WeightUnit): String`, `fun formatKg(kg: Double): String`
 
-- [ ] **Step 1: Write failing tests** for Epley, strict PR ties, warmup/bodyweight exclusion, 28/56/90/365-day boundaries, delta when previous is zero, and kg/lb display round trips.
-- [ ] **Step 2: Run** `gradlew.bat test --tests "*AnalyticsTest" --tests "*UnitsTest"` and confirm red.
-- [ ] **Step 3: Implement.** Current window is `[now - 28d, now]`, prior is `[now - 56d, now - 28d)`. Trend windows are 30/90/365/All days, point per session = max e1RM. One point per finished session. Display pounds at 0.1 lb.
-- [ ] **Step 4: Run** and confirm green.
-- [ ] **Step 5: Commit** `feat: add analytics and unit conversion`.
+- [x] **Step 1: Write failing tests** for Epley, strict PR ties, warmup/bodyweight exclusion, 28/56/90/365-day boundaries, delta when previous is zero, and kg/lb display round trips.
+- [x] **Step 2: Run** `gradlew.bat test --tests "*AnalyticsTest" --tests "*UnitsTest"` and confirm red.
+- [x] **Step 3: Implement.** Current window is `[now - 28d, now]`, prior is `[now - 56d, now - 28d)`. Trend windows are 30/90/365/All days, point per session = max e1RM. One point per finished session. Display pounds at 0.1 lb.
+- [x] **Step 4: Run** and confirm green.
+- [x] **Step 5: Commit** `feat: add analytics and unit conversion`.
 
 ### Task 3: Seed catalog
 
@@ -106,11 +106,11 @@
 - Produces: `data class SeedTemplate(val name: String, val exercises: List<SeedTemplateExercise>)`
 - Produces: `object SeedContent { const val VERSION = 1; val exercises: List<SeedExercise>; val templates: List<SeedTemplate> }`
 
-- [ ] **Step 1: Write failing test** asserting 6 template names, totals `[9, 16, 17, 13, 12, 16]`, 56 exercises, 10 muscle groups, and every template exercise exists in the library.
-- [ ] **Step 2: Run** `gradlew.bat test --tests "*SeedContentTest"` and confirm red.
-- [ ] **Step 3: Implement** the exact rows from roadmap 4.7.
-- [ ] **Step 4: Run** and confirm green.
-- [ ] **Step 5: Commit** `feat: add seed catalog`.
+- [x] **Step 1: Write failing test** asserting 6 template names, totals `[9, 16, 17, 13, 12, 16]`, 56 exercises, 10 muscle groups, and every template exercise exists in the library.
+- [x] **Step 2: Run** `gradlew.bat test --tests "*SeedContentTest"` and confirm red.
+- [x] **Step 3: Implement** the exact rows from roadmap 4.7.
+- [x] **Step 4: Run** and confirm green.
+- [x] **Step 5: Commit** `feat: add seed catalog`.
 
 ### Task 4: Room schema, DAO, seed transaction
 
@@ -129,11 +129,11 @@
 - Produces: `class BuhatRepository(database: BuhatDatabase, settingsStore: SettingsStore)` with `suspend fun seedIfNeeded()` and flows for exercises and templates.
 - Deterministic seed IDs: `UUID.nameUUIDFromBytes("<type>:<name>".toByteArray()).toString()` so re-running uses INSERT OR IGNORE.
 
-- [ ] **Step 1: Write failing device tests** for NOCASE unique exercise names, cascade template delete, unique `(sessionExerciseId, workingIndex)` with multiple null warmups allowed, and seeding twice leaving 6 templates / 56 exercises / correct totals.
-- [ ] **Step 2: Run** `gradlew.bat connectedDebugAndroidTest` and confirm red (classes missing).
-- [ ] **Step 3: Implement** entities, converters, DAO (`OnConflictStrategy.IGNORE` inserts, counts, queries), database with `exportSchema = true`, repository seeding inside `withTransaction`, then `settingsStore.markSeeded(VERSION)`.
-- [ ] **Step 4: Run** `gradlew.bat connectedDebugAndroidTest` and confirm green. Verify `app/schemas/.../1.json` exists.
-- [ ] **Step 5: Commit** `feat: add room schema and seeded content`.
+- [x] **Step 1: Write failing device tests** for NOCASE unique exercise names, cascade template delete, unique `(sessionExerciseId, workingIndex)` with multiple null warmups allowed, and seeding twice leaving 6 templates / 56 exercises / correct totals.
+- [x] **Step 2: Run** `gradlew.bat connectedDebugAndroidTest` and confirm red (classes missing).
+- [x] **Step 3: Implement** entities, converters, DAO (`OnConflictStrategy.IGNORE` inserts, counts, queries), database with `exportSchema = true`, repository seeding inside `withTransaction`, then `settingsStore.markSeeded(VERSION)`.
+- [x] **Step 4: Run** `gradlew.bat connectedDebugAndroidTest` and confirm green. Verify `app/schemas/.../1.json` exists.
+- [x] **Step 5: Commit** `feat: add room schema and seeded content`.
 
 ### Task 5: DataStore profile and settings
 
@@ -149,11 +149,11 @@
 - Produces: `class ProfileStore(dataStore) { val profile: Flow<Profile>; suspend fun save(profile) }`
 - Produces: `class SettingsStore(dataStore) { val settings: Flow<Settings>; suspend fun save(settings); suspend fun markSeeded(version: Int) }`
 
-- [ ] **Step 1: Write failing device test** that reads defaults, saves a full profile/settings, recreates the DataStore from the same file, and reads identical values. Also assert every default above.
-- [ ] **Step 2: Run** `gradlew.bat connectedDebugAndroidTest --tests "*ProfileSettingsStoreTest"` and confirm red.
-- [ ] **Step 3: Implement** preference keys and mapping. Defaults documented in KDoc on `Profile`/`Settings`.
-- [ ] **Step 4: Run** and confirm green.
-- [ ] **Step 5: Commit** `feat: add profile and settings stores`.
+- [x] **Step 1: Write failing device test** that reads defaults, saves a full profile/settings, recreates the DataStore from the same file, and reads identical values. Also assert every default above.
+- [x] **Step 2: Run** `gradlew.bat connectedDebugAndroidTest --tests "*ProfileSettingsStoreTest"` and confirm red.
+- [x] **Step 3: Implement** preference keys and mapping. Defaults documented in KDoc on `Profile`/`Settings`.
+- [x] **Step 4: Run** and confirm green.
+- [x] **Step 5: Commit** `feat: add profile and settings stores`.
 
 ### Task 6: Application and manual container
 
@@ -166,9 +166,9 @@
 - Produces: `class AppContainer(context: Context)` with `database`, `repository`, `profileStore`, `settingsStore`.
 - Produces: `class BuhatApplication : Application` with `val container: AppContainer` and a background seed on create.
 
-- [ ] **Step 1: Implement** the container and application; no new test class (compile + Task 4 seed test cover it).
-- [ ] **Step 2: Run** `gradlew.bat assembleDebug` and confirm success.
-- [ ] **Step 3: Commit** `feat: wire application container and seed on start`.
+- [x] **Step 1: Implement** the container and application; no new test class (compile + Task 4 seed test cover it).
+- [x] **Step 2: Run** `gradlew.bat assembleDebug` and confirm success.
+- [x] **Step 3: Commit** `feat: wire application container and seed on start`.
 
 ### Task 7: Theme and shared UI primitives
 
