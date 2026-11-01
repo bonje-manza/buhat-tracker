@@ -99,6 +99,13 @@ object SeedContent {
         entries.map { (name, equipment) -> SeedExercise(name, group, equipment) }
     }
 
+    val muscleGroups: List<String> = GROUPED_EXERCISES.keys.toList()
+
+    val equipmentTypes: List<String> = GROUPED_EXERCISES.values
+        .flatten()
+        .map { it.second }
+        .distinct()
+
     private fun template(name: String, exercises: List<SeedTemplateExercise>) = SeedTemplate(name, exercises)
 
     val templates: List<SeedTemplate> = listOf(

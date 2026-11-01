@@ -29,6 +29,18 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.buhat.tracker.data.BuhatRepository
+import com.buhat.tracker.data.ProfileStore
+import com.buhat.tracker.ui.screens.ExerciseEditorScreen
+import com.buhat.tracker.ui.screens.ExerciseLibraryScreen
+import com.buhat.tracker.ui.screens.HomeScreen
+import com.buhat.tracker.ui.screens.ProfileEditorScreen
+import com.buhat.tracker.ui.screens.SettingsScreen
+import com.buhat.tracker.ui.screens.TemplateEditorScreen
+import com.buhat.tracker.ui.screens.WorkoutsScreen
 
 enum class BuhatTab(val label: String) {
     Home("Home"),
@@ -38,7 +50,66 @@ enum class BuhatTab(val label: String) {
 }
 
 @Composable
-fun BuhatApp() {
+fun BuhatApp(repository: BuhatRepository, profileStore: ProfileStore) {
+    val nav = rememberNavController()
+
+    NavHost(navController = nav, startDestination = "tabs") {
+        composable("tabs") {
+            TabsScreen(
+                repository = repository,
+                profileStore = profileStore,
+                onOpenProfile = { nav.navigate("profile") },
+                onOpenSettings = { nav.navigate("settings") },
+                onOpenLibrary = { nav.navigate("library") },
+                onNewTemplate = { nav.navigate("template/new") },
+                onEditTemplate = { id -> nav.navigate("template/$id") },
+            )
+        }
+        composable("library") {
+            ExerciseLibraryScreen(
+                repository = repository,
+                onBack = { nav.popBackStack() },
+                onNewExercise = { nav.navigate("exercise/new") },
+                onEditExercise = { id -> nav.navigate("exercise/$id") },
+            )
+        }
+        composable("exercise/{id}") { entry ->
+            ExerciseEditorScreen(
+                repository = repository,
+                exerciseId = entry.arguments?.getString("id"),
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable("template/{id}") { entry ->
+            TemplateEditorScreen(
+                repository = repository,
+                templateId = entry.arguments?.getString("id"),
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable("profile") {
+            ProfileEditorScreen(profileStore = profileStore, onBack = { nav.popBackStack() })
+        }
+        composable("settings") {
+            SettingsScreen(
+                profileStore = profileStore,
+                onBack = { nav.popBackStack() },
+                onOpenProfile = { nav.navigate("profile") },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TabsScreen(
+    repository: BuhatRepository,
+    profileStore: ProfileStore,
+    onOpenProfile: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenLibrary: () -> Unit,
+    onNewTemplate: () -> Unit,
+    onEditTemplate: (String) -> Unit,
+) {
     var selected by rememberSaveable { mutableStateOf(BuhatTab.Home) }
 
     Scaffold(
@@ -51,8 +122,18 @@ fun BuhatApp() {
                 .padding(innerPadding),
         ) {
             when (selected) {
-                BuhatTab.Home -> EmptyScreen(BuhatTab.Home)
-                BuhatTab.Workouts -> EmptyScreen(BuhatTab.Workouts)
+                BuhatTab.Home -> HomeScreen(
+                    repository = repository,
+                    profileStore = profileStore,
+                    onOpenProfile = onOpenProfile,
+                    onOpenSettings = onOpenSettings,
+                )
+                BuhatTab.Workouts -> WorkoutsScreen(
+                    repository = repository,
+                    onNewTemplate = onNewTemplate,
+                    onEditTemplate = onEditTemplate,
+                    onOpenLibrary = onOpenLibrary,
+                )
                 BuhatTab.Active -> EmptyScreen(BuhatTab.Active)
                 BuhatTab.Progress -> EmptyScreen(BuhatTab.Progress)
             }

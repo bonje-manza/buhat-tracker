@@ -11,9 +11,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val container = (application as BuhatApplication).container
         setContent {
             BuhatTheme {
-                BuhatApp()
+                BuhatApp(
+                    repository = container.repository,
+                    profileStore = container.profileStore,
+                )
             }
         }
     }

@@ -2,7 +2,7 @@
 
 ## 1. Status, goal, and success criteria
 
-**Status:** Phase 1 complete. Phase 0 is installed and running on the phone; the Phase 1 data foundation (Room schema and seed, DataStore stores, progression and analytics rules, dark/light themes and shared components) is built and tested. Phase 2 is next.
+**Status:** Phase 2 complete. Phase 0 is installed and running on the phone; the Phase 1 data foundation (Room schema and seed, DataStore stores, progression and analytics rules, dark/light themes and shared components) and the Phase 2 content management (exercise library, template editor, profile, Settings entry) are built and tested. Phase 3 is next.
 
 **Goal:** A private, offline Android strength log for you and your friends. Each install owns its data. You train from premade or custom templates, log every set with weight, reps, RIR, and type, get per-set double-progression targets, run a rest timer, and review e1RM progress. Data moves by JSON export/import. Delivery is a signed APK.
 
@@ -388,12 +388,12 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Workouts screen: header count, All/Premade/My templates filters, cards, empty states, Start button placeholder.
-- [ ] Template editor: create, rename, duplicate premade, delete custom, add/remove/reorder exercises, sets, rep range, optional target RIR, validation.
-- [ ] Exercise library: search, muscle-group filter, custom create/edit, archive, delete rules, custom badge.
-- [ ] Premade rows read-only; duplicate available.
-- [ ] Profile view/edit: name, gender, age, weight, height; training-since and total-session fields derive from data.
-- [ ] Wire Settings entry from the Home profile card.
+- [x] Workouts screen: header count, All/Premade/My templates filters, cards, empty states, Start button placeholder.
+- [x] Template editor: create, rename, duplicate premade, delete custom, add/remove/reorder exercises, sets, rep range, optional target RIR, validation.
+- [x] Exercise library: search, muscle-group filter, custom create/edit, archive, delete rules, custom badge.
+- [x] Premade rows read-only; duplicate available.
+- [x] Profile view/edit: name, gender, age, weight, height; training-since and total-session fields derive from data.
+- [x] Wire Settings entry from the Home profile card.
 
 **Acceptance checks**
 
