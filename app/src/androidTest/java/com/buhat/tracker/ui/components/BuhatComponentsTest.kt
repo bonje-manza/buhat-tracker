@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -14,6 +15,7 @@ import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.formatKg
 import com.buhat.tracker.ui.theme.BuhatTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,6 +41,24 @@ class BuhatComponentsTest {
 
         compose.onNodeWithTag("segmented-Premade").performClick()
         compose.runOnIdle { assertEquals(1, selected) }
+    }
+
+    @Test
+    fun segmentedOptionsMeetThe48dpTouchTarget() {
+        compose.setContent {
+            BuhatTheme {
+                BuhatSegmentedControl(
+                    options = listOf("All", "Premade", "My"),
+                    selectedIndex = 0,
+                    onSelect = {},
+                )
+            }
+        }
+
+        // Roadmap 4.4: minimum 48dp touch targets.
+        val node = compose.onNodeWithTag("segmented-All").fetchSemanticsNode()
+        val minPx = with(compose.density) { 48.dp.toPx() }
+        assertTrue("segmented option is ${node.size.height}px, need >= ${minPx}px", node.size.height >= minPx)
     }
 
     @Test

@@ -138,7 +138,7 @@ fun BuhatSegmentedControl(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 40.dp)
+                    .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(50))
                     .background(if (selected) scheme.onSurface else Color.Transparent)
                     .clickable(
