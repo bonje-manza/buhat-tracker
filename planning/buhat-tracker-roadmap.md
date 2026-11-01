@@ -2,7 +2,7 @@
 
 ## 1. Status, goal, and success criteria
 
-**Status:** Phase 0 complete. Temurin JDK 21 is installed with `JAVA_HOME` set, the Gradle 8.11.1 wrapper is committed, and a themed debug build is installed and running on the test phone. Phase 1 is next.
+**Status:** Phase 1 complete. Phase 0 is installed and running on the phone; the Phase 1 data foundation (Room schema and seed, DataStore stores, progression and analytics rules, dark/light themes and shared components) is built and tested. Phase 2 is next.
 
 **Goal:** A private, offline Android strength log for you and your friends. Each install owns its data. You train from premade or custom templates, log every set with weight, reps, RIR, and type, get per-set double-progression targets, run a rest timer, and review e1RM progress. Data moves by JSON export/import. Delivery is a signed APK.
 
@@ -363,14 +363,14 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Room entities, DAOs, indices, foreign keys, and `exportSchema = true` with the schema directory committed.
-- [ ] Repositories and manual dependency container in `BuhatApplication`.
-- [ ] DataStore for profile and settings with documented defaults.
-- [ ] Idempotent seed of the exercise library and 6 premade templates, guarded by a seed version.
-- [ ] Domain functions: working-position numbering, source-session lookup, per-set target, Epley e1RM, PR chronology, 4-week and 90-day analytics, unit conversion.
-- [ ] Unit tests for every rule in section 4.3, especially per-position independence and source fallback.
-- [ ] Dark and light color schemes, typography, spacing, and shared components: card, pill, segmented control, stepper, badge, chart, empty state.
-- [ ] Settings/profile persistence smoke test.
+- [x] Room entities, DAOs, indices, foreign keys, and `exportSchema = true` with the schema directory committed.
+- [x] Repositories and manual dependency container in `BuhatApplication`.
+- [x] DataStore for profile and settings with documented defaults.
+- [x] Idempotent seed of the exercise library and 6 premade templates, guarded by a seed version.
+- [x] Domain functions: working-position numbering, source-session lookup, per-set target, Epley e1RM, PR chronology, 4-week and 90-day analytics, unit conversion.
+- [x] Unit tests for every rule in section 4.3, especially per-position independence and source fallback.
+- [x] Dark and light color schemes, typography, spacing, and shared components: card, pill, segmented control, stepper, badge, chart, empty state.
+- [x] Settings/profile persistence smoke test.
 
 **Acceptance checks**
 

@@ -183,16 +183,16 @@
 - Produces: `BuhatCard`, `BuhatPill`, `BuhatSegmentedControl(options, selectedIndex, onSelect)`, `BuhatStepper(value, onValueChange, step, min, max, format)`, `BuhatBadge`, `SetTypeBadge(type)`, `PrBadge`, `BuhatLineChart(values, contentDescription)`, `BuhatEmptyState(title, message)`.
 - All colors come from `MaterialTheme.colorScheme`; no hard-coded component colors. Touch targets >= 48dp. Set type always rendered as text.
 
-- [ ] **Step 1: Write failing device test** rendering both themes and asserting segmented selection, stepper increment, badge/pill/empty-state text, and chart content description.
-- [ ] **Step 2: Run** `gradlew.bat connectedDebugAndroidTest --tests "*BuhatComponentsTest"` and confirm red.
-- [ ] **Step 3: Implement** the tokens, both schemes, and the primitives. Chart is a Compose Canvas polyline.
-- [ ] **Step 4: Run** and confirm green.
-- [ ] **Step 5: Commit** `feat: add light theme and shared components`.
+- [x] **Step 1: Write failing device test** rendering both themes and asserting segmented selection, stepper increment, badge/pill/empty-state text, and chart content description.
+- [x] **Step 2: Run** `gradlew.bat connectedDebugAndroidTest --tests "*BuhatComponentsTest"` and confirm red.
+- [x] **Step 3: Implement** the tokens, both schemes, and the primitives. Chart is a Compose Canvas polyline.
+- [x] **Step 4: Run** and confirm green.
+- [x] **Step 5: Commit** `feat: add light theme and shared components`.
 
 ### Task 8: Verification
 
-- [ ] **Step 1: Run** `gradlew.bat test` and capture output; all unit tests pass.
-- [ ] **Step 2: Run** `gradlew.bat connectedDebugAndroidTest` and capture output; all device tests pass.
-- [ ] **Step 3: Run** `gradlew.bat assembleDebug` and capture output.
-- [ ] **Step 4: Update** Phase 1 checkboxes and status line in `planning/buhat-tracker-roadmap.md`.
-- [ ] **Step 5: Commit** `chore: complete phase 1`.
+- [x] **Step 1: Run** `gradlew.bat test` and capture output; all unit tests pass.
+- [x] **Step 2: Run** `gradlew.bat connectedDebugAndroidTest` and capture output; all device tests pass.
+- [x] **Step 3: Run** `gradlew.bat assembleDebug` and capture output.
+- [x] **Step 4: Update** Phase 1 checkboxes and status line in `planning/buhat-tracker-roadmap.md`.
+- [x] **Step 5: Commit** `chore: complete phase 1`.
