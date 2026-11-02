@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import com.buhat.tracker.domain.SetType
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -100,6 +101,70 @@ interface BuhatDao {
     @Query("SELECT * FROM LoggedSet WHERE sessionExerciseId = :sessionExerciseId ORDER BY completedAt")
     suspend fun selectSetsFor(sessionExerciseId: String): List<LoggedSet>
 
+    @Query("SELECT * FROM LoggedSet WHERE sessionExerciseId = :sessionExerciseId ORDER BY completedAt")
+    fun observeSetsFor(sessionExerciseId: String): Flow<List<LoggedSet>>
+
+    @Query("SELECT * FROM LoggedSet WHERE id = :id")
+    suspend fun setById(id: String): LoggedSet?
+
+    @Update
+    suspend fun updateSet(set: LoggedSet)
+
+    @Query("UPDATE LoggedSet SET workingIndex = NULL WHERE sessionExerciseId = :sessionExerciseId")
+    suspend fun clearWorkingIndices(sessionExerciseId: String)
+
+    @Query("UPDATE LoggedSet SET workingIndex = :workingIndex WHERE id = :id")
+    suspend fun updateWorkingIndex(id: String, workingIndex: Int?)
+
+    @Query("DELETE FROM LoggedSet WHERE id = :id")
+    suspend fun deleteSetById(id: String)
+
+    @Query("SELECT * FROM WorkoutSession WHERE status = 'ACTIVE' LIMIT 1")
+    fun observeActiveSession(): Flow<WorkoutSession?>
+
+    @Query("SELECT * FROM WorkoutSession WHERE status = 'ACTIVE' LIMIT 1")
+    suspend fun activeSession(): WorkoutSession?
+
+    @Query("SELECT COUNT(*) FROM WorkoutSession WHERE status = 'ACTIVE'")
+    suspend fun activeSessionCount(): Int
+
+    @Query("SELECT * FROM WorkoutSession WHERE id = :id")
+    suspend fun sessionById(id: String): WorkoutSession?
+
+    @Update
+    suspend fun updateSession(session: WorkoutSession)
+
+    @Query("DELETE FROM WorkoutSession WHERE id = :id")
+    suspend fun deleteSessionById(id: String)
+
+    @Query("SELECT * FROM SessionExercise WHERE sessionId = :sessionId ORDER BY position")
+    fun observeSessionExercises(sessionId: String): Flow<List<SessionExercise>>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM LoggedSet
+        WHERE sessionExerciseId IN (SELECT id FROM SessionExercise WHERE sessionId = :sessionId)
+          AND workingIndex IS NOT NULL
+        """,
+    )
+    suspend fun workingSetCount(sessionId: String): Int
+
+    @Query(
+        """
+        SELECT s.id AS sessionId, s.templateIdSnapshot AS templateIdSnapshot,
+               s.finishedAt AS finishedAt, se.exerciseId AS exerciseId,
+               ls.id AS setId, ls.setType AS setType, ls.workingIndex AS workingIndex,
+               ls.weightKg AS weightKg, ls.reps AS reps, ls.rir AS rir,
+               ls.completedAt AS completedAt
+        FROM WorkoutSession s
+        JOIN SessionExercise se ON se.sessionId = s.id
+        JOIN LoggedSet ls ON ls.sessionExerciseId = se.id
+        WHERE s.status = 'FINISHED' AND se.exerciseId = :exerciseId
+        ORDER BY s.finishedAt, ls.completedAt
+        """,
+    )
+    fun observeHistoryRowsFor(exerciseId: String): Flow<List<HistorySetRow>>
+
     @Query("DELETE FROM Template WHERE id IN (:ids)")
     suspend fun deleteTemplates(ids: List<String>)
 
@@ -133,4 +198,18 @@ data class TemplateExerciseRow(
 data class ProfileStats(
     val totalWorkouts: Int,
     val firstFinishedAt: Long?,
+)
+
+data class HistorySetRow(
+    val sessionId: String,
+    val templateIdSnapshot: String,
+    val finishedAt: Long?,
+    val exerciseId: String,
+    val setId: String,
+    val setType: SetType,
+    val workingIndex: Int?,
+    val weightKg: Double,
+    val reps: Int,
+    val rir: Int?,
+    val completedAt: Long,
 )

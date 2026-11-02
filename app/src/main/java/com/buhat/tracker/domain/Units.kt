@@ -11,7 +11,11 @@ fun kgToLb(kg: Double): Double = kg * KG_PER_LB
 
 fun lbToKg(lb: Double): Double = lb / KG_PER_LB
 
-fun formatWeight(kg: Double, unit: WeightUnit): String = when (unit) {
-    WeightUnit.KG -> "${formatKg(kg)} kg"
-    WeightUnit.LB -> "${BigDecimal.valueOf(kgToLb(kg)).setScale(1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()} lb"
+fun formatWeightValue(kg: Double, unit: WeightUnit): String = when (unit) {
+    WeightUnit.KG -> formatKg(kg)
+    WeightUnit.LB -> BigDecimal.valueOf(kgToLb(kg)).setScale(1, RoundingMode.HALF_UP)
+        .stripTrailingZeros().toPlainString()
 }
+
+fun formatWeight(kg: Double, unit: WeightUnit): String =
+    "${formatWeightValue(kg, unit)} ${if (unit == WeightUnit.KG) "kg" else "lb"}"

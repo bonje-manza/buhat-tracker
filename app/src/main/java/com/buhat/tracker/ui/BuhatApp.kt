@@ -34,6 +34,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.ProfileStore
+import com.buhat.tracker.ui.screens.ActiveWorkoutScreen
 import com.buhat.tracker.ui.screens.ExerciseEditorScreen
 import com.buhat.tracker.ui.screens.ExerciseLibraryScreen
 import com.buhat.tracker.ui.screens.HomeScreen
@@ -133,8 +134,12 @@ private fun TabsScreen(
                     onNewTemplate = onNewTemplate,
                     onEditTemplate = onEditTemplate,
                     onOpenLibrary = onOpenLibrary,
+                    onOpenActive = { selected = BuhatTab.Active },
                 )
-                BuhatTab.Active -> EmptyScreen(BuhatTab.Active)
+                BuhatTab.Active -> ActiveWorkoutScreen(
+                    repository = repository,
+                    onStartWorkout = { selected = BuhatTab.Workouts },
+                )
                 BuhatTab.Progress -> EmptyScreen(BuhatTab.Progress)
             }
         }

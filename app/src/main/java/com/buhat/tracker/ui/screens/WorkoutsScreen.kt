@@ -35,7 +35,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.buhat.tracker.data.ActiveSessionException
 import com.buhat.tracker.data.BuhatRepository
+import com.buhat.tracker.data.SessionValidationException
 import com.buhat.tracker.data.TemplateCard
 import com.buhat.tracker.ui.components.BuhatCard
 import com.buhat.tracker.ui.components.BuhatEmptyState
@@ -49,11 +51,13 @@ fun WorkoutsScreen(
     onNewTemplate: () -> Unit,
     onEditTemplate: (String) -> Unit,
     onOpenLibrary: () -> Unit,
+    onOpenActive: () -> Unit,
 ) {
     val cards by remember(repository) { repository.templateCards() }
         .collectAsState(emptyList())
     var filter by rememberSaveable { mutableStateOf(0) }
     var pendingDelete by remember { mutableStateOf<TemplateCard?>(null) }
+    var startConflict by remember { mutableStateOf<Pair<String, TemplateCard>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -113,6 +117,18 @@ fun WorkoutsScreen(
             TemplateCardItem(
                 card = card,
                 onEdit = { onEditTemplate(card.template.id) },
+                onStart = {
+                    scope.launch {
+                        try {
+                            repository.startSession(card.template.id)
+                            onOpenActive()
+                        } catch (e: ActiveSessionException) {
+                            startConflict = e.sessionId to card
+                        } catch (e: SessionValidationException) {
+                            error = e.message
+                        }
+                    }
+                },
                 onDuplicate = {
                     scope.launch {
                         try {
@@ -159,12 +175,51 @@ fun WorkoutsScreen(
             },
         )
     }
+
+    startConflict?.let { (activeId, card) ->
+        AlertDialog(
+            onDismissRequest = { startConflict = null },
+            title = { Text("Workout in progress") },
+            text = { Text("Resume it, or discard it and start \"${card.template.name}\".") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        startConflict = null
+                        onOpenActive()
+                    },
+                    modifier = Modifier.testTag("resume-workout"),
+                ) {
+                    Text("Resume")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        startConflict = null
+                        scope.launch {
+                            repository.discardSession(activeId)
+                            try {
+                                repository.startSession(card.template.id)
+                                onOpenActive()
+                            } catch (e: Exception) {
+                                error = e.message
+                            }
+                        }
+                    },
+                    modifier = Modifier.testTag("discard-and-start"),
+                ) {
+                    Text("Discard and start")
+                }
+            },
+        )
+    }
 }
 
 @Composable
 private fun TemplateCardItem(
     card: TemplateCard,
     onEdit: () -> Unit,
+    onStart: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -226,10 +281,8 @@ private fun TemplateCardItem(
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(12.dp))
-        // Placeholder until Phase 3 wires session start.
         Button(
-            onClick = {},
-            enabled = false,
+            onClick = onStart,
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("start-workout-${card.template.name}"),

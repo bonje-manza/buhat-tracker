@@ -2,7 +2,7 @@
 
 ## 1. Status, goal, and success criteria
 
-**Status:** Phase 2 complete. Phase 0 is installed and running on the phone; the Phase 1 data foundation (Room schema and seed, DataStore stores, progression and analytics rules, dark/light themes and shared components) and the Phase 2 content management (exercise library, template editor, profile, Settings entry) are built and tested. Phase 3 is next.
+**Status:** Phase 3 complete. Phases 0-3 are built and tested; the Phase 3 suite (45 unit, 54 device) passes on the test phone. Phase 4 is next.
 
 **Goal:** A private, offline Android strength log for you and your friends. Each install owns its data. You train from premade or custom templates, log every set with weight, reps, RIR, and type, get per-set double-progression targets, run a rest timer, and review e1RM progress. Data moves by JSON export/import. Delivery is a signed APK.
 
@@ -412,16 +412,16 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Start session: copy template into `SessionExercise` snapshots; enforce one active session; Resume/Discard prompt.
-- [ ] Active header: template name, elapsed time, overflow Finish/Discard.
-- [ ] Exercise chips and selected exercise.
-- [ ] Logged-set list: type badge, weight × reps, type label, RIR; edit and delete current-session sets; retype with working-index renumbering.
-- [ ] Target card for the next working position: source set, suggested weight/reps, progression message, target RIR, "Use target".
-- [ ] Logging card: segmented type, weight stepper and numeric entry, reps stepper and entry, RIR 0..5, Log set.
-- [ ] Prefill from the same position in the source session; fallback to the last set in the current session; fallback to blank.
-- [ ] Add set beyond the prescribed count; finish and discard flows.
-- [ ] Session elapsed time and active-session restore on launch.
-- [ ] Unit tests for prefill and target computation, including warmup exclusion and type changes.
+- [x] Start session: copy template into `SessionExercise` snapshots; enforce one active session; Resume/Discard prompt.
+- [x] Active header: template name, elapsed time, overflow Finish/Discard.
+- [x] Exercise chips and selected exercise.
+- [x] Logged-set list: type badge, weight × reps, type label, RIR; edit and delete current-session sets; retype with working-index renumbering.
+- [x] Target card for the next working position: source set, suggested weight/reps, progression message, target RIR, "Use target".
+- [x] Logging card: segmented type, weight stepper and numeric entry, reps stepper and entry, RIR 0..5, Log set.
+- [x] Prefill from the same position in the source session; fallback to the last set in the current session; fallback to blank.
+- [x] Add set beyond the prescribed count; finish and discard flows.
+- [x] Session elapsed time and active-session restore on launch.
+- [x] Unit tests for prefill and target computation, including warmup exclusion and type changes.
 
 **Acceptance checks**
 
