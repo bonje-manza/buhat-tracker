@@ -34,6 +34,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.ProfileStore
+import com.buhat.tracker.timer.RestTimer
 import com.buhat.tracker.ui.screens.ActiveWorkoutScreen
 import com.buhat.tracker.ui.screens.ExerciseEditorScreen
 import com.buhat.tracker.ui.screens.ExerciseLibraryScreen
@@ -51,7 +52,7 @@ enum class BuhatTab(val label: String) {
 }
 
 @Composable
-fun BuhatApp(repository: BuhatRepository, profileStore: ProfileStore) {
+fun BuhatApp(repository: BuhatRepository, profileStore: ProfileStore, restTimer: RestTimer) {
     val nav = rememberNavController()
 
     NavHost(navController = nav, startDestination = "tabs") {
@@ -59,6 +60,7 @@ fun BuhatApp(repository: BuhatRepository, profileStore: ProfileStore) {
             TabsScreen(
                 repository = repository,
                 profileStore = profileStore,
+                restTimer = restTimer,
                 onOpenProfile = { nav.navigate("profile") },
                 onOpenSettings = { nav.navigate("settings") },
                 onOpenLibrary = { nav.navigate("library") },
@@ -94,6 +96,7 @@ fun BuhatApp(repository: BuhatRepository, profileStore: ProfileStore) {
         composable("settings") {
             SettingsScreen(
                 profileStore = profileStore,
+                settingsStore = repository.settingsStore,
                 onBack = { nav.popBackStack() },
                 onOpenProfile = { nav.navigate("profile") },
             )
@@ -105,6 +108,7 @@ fun BuhatApp(repository: BuhatRepository, profileStore: ProfileStore) {
 private fun TabsScreen(
     repository: BuhatRepository,
     profileStore: ProfileStore,
+    restTimer: RestTimer,
     onOpenProfile: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenLibrary: () -> Unit,
@@ -131,6 +135,7 @@ private fun TabsScreen(
                 )
                 BuhatTab.Workouts -> WorkoutsScreen(
                     repository = repository,
+                    restTimer = restTimer,
                     onNewTemplate = onNewTemplate,
                     onEditTemplate = onEditTemplate,
                     onOpenLibrary = onOpenLibrary,
@@ -138,6 +143,7 @@ private fun TabsScreen(
                 )
                 BuhatTab.Active -> ActiveWorkoutScreen(
                     repository = repository,
+                    restTimer = restTimer,
                     onStartWorkout = { selected = BuhatTab.Workouts },
                 )
                 BuhatTab.Progress -> EmptyScreen(BuhatTab.Progress)

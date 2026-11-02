@@ -17,6 +17,7 @@ class MainActivity : ComponentActivity() {
                 BuhatApp(
                     repository = container.repository,
                     profileStore = container.profileStore,
+                    restTimer = container.restTimer,
                 )
             }
         }

@@ -171,14 +171,17 @@ fun BuhatStepper(
     max: Double,
     format: (Double) -> String,
     modifier: Modifier = Modifier,
+    tagPrefix: String = "",
 ) {
     val scheme = MaterialTheme.colorScheme
+    val minusTag = if (tagPrefix.isEmpty()) "stepper-minus" else "$tagPrefix-minus"
+    val plusTag = if (tagPrefix.isEmpty()) "stepper-plus" else "$tagPrefix-plus"
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        StepperButton(tag = "stepper-minus", label = "−", scheme = scheme) {
+        StepperButton(tag = minusTag, label = "−", scheme = scheme) {
             onValueChange((value - step).coerceIn(min, max))
         }
         Text(
@@ -188,7 +191,7 @@ fun BuhatStepper(
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center,
         )
-        StepperButton(tag = "stepper-plus", label = "+", scheme = scheme) {
+        StepperButton(tag = plusTag, label = "+", scheme = scheme) {
             onValueChange((value + step).coerceIn(min, max))
         }
     }

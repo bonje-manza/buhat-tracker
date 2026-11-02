@@ -8,6 +8,7 @@ import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.ProfileStore
 import com.buhat.tracker.data.SettingsStore
 import com.buhat.tracker.data.local.BuhatDatabase
+import com.buhat.tracker.timer.RestTimer
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +38,7 @@ class AppContainer(private val context: Context, private val inMemory: Boolean =
         Room.databaseBuilder(context, BuhatDatabase::class.java, "buhat.db").build()
     }
     val repository = BuhatRepository(database, settingsStore)
+    val restTimer = RestTimer(context, settingsStore)
 
     fun close() {
         database.close()

@@ -163,7 +163,10 @@ class ScreenTest {
         compose.onNodeWithText("Delete exercise").performClick()
         compose.onNodeWithText("Used in a template").assertExists()
         compose.onNodeWithTag("confirm-archive").performClick()
-        compose.onNodeWithTag("exercise-row-Belt Squat").assertDoesNotExist()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("exercise-row-Belt Squat"))
+                .fetchSemanticsNodes().isEmpty()
+        }
     }
 
     @Test

@@ -20,6 +20,8 @@ import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.domain.countsForProgression
 import com.buhat.tracker.domain.renumberWorkingSets
+import com.buhat.tracker.domain.restEndsAt
+import com.buhat.tracker.domain.restSecondsFor
 import com.buhat.tracker.domain.validateExerciseName
 import com.buhat.tracker.domain.validateSet
 import com.buhat.tracker.domain.validateTemplate
@@ -28,6 +30,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 fun seededId(type: String, name: String): String =
     UUID.nameUUIDFromBytes("$type:$name".toByteArray()).toString()
@@ -56,6 +60,9 @@ class BuhatRepository(
     private val database: BuhatDatabase,
     val settingsStore: SettingsStore,
 ) {
+
+    // Serialize set writes with finish/discard so a late timer write cannot resurrect a rest.
+    private val sessionWriteMutex = Mutex()
 
     fun exercises() = database.dao().observeExercises()
 
@@ -311,9 +318,12 @@ class BuhatRepository(
         weightKg: Double,
         reps: Int,
         rir: Int?,
-    ): String {
+    ): String = sessionWriteMutex.withLock {
         validateSet(weightKg, reps, rir)?.let { throw SessionValidationException(it) }
         val dao = database.dao()
+        if (!dao.sessionExerciseIsActive(sessionExerciseId)) {
+            throw SessionValidationException("Workout is not active.")
+        }
         val workingIndex = if (setType.countsForProgression) {
             val existing = dao.selectSetsFor(sessionExerciseId)
             (existing.maxOfOrNull { it.workingIndex ?: 0 } ?: 0) + 1
@@ -321,6 +331,7 @@ class BuhatRepository(
             null
         }
         val id = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
         dao.insertSets(
             listOf(
                 LoggedSet(
@@ -331,13 +342,28 @@ class BuhatRepository(
                     weightKg = weightKg,
                     reps = reps,
                     rir = rir,
-                    completedAt = System.currentTimeMillis(),
+                    completedAt = now,
                 ),
             ),
         )
-        return id
+        val current = settingsStore.settings.first()
+        settingsStore.setRestEndsAt(
+            restEndsAt(
+                now,
+                restSecondsFor(
+                    setType,
+                    current.restWarmupSeconds,
+                    current.restWorkingSeconds,
+                    current.restFailureSeconds,
+                ),
+            ),
+        )
+        id
     }
 
+    suspend fun clearRest() = sessionWriteMutex.withLock { settingsStore.setRestEndsAt(null) }
+
+    suspend fun completeRest(endsAt: Long) = settingsStore.clearRestIfMatches(endsAt)
     suspend fun updateSet(
         setId: String,
         setType: SetType,
@@ -371,17 +397,19 @@ class BuhatRepository(
         }
     }
 
-    suspend fun finishSession(sessionId: String) {
+    suspend fun finishSession(sessionId: String) = sessionWriteMutex.withLock {
         val dao = database.dao()
-        val session = dao.sessionById(sessionId) ?: return
+        val session = dao.sessionById(sessionId) ?: return@withLock
         if (dao.workingSetCount(sessionId) == 0) throw NoWorkingSetsException()
         dao.updateSession(
             session.copy(status = WorkoutStatus.FINISHED, finishedAt = System.currentTimeMillis()),
         )
+        settingsStore.setRestEndsAt(null)
     }
 
-    suspend fun discardSession(sessionId: String) {
+    suspend fun discardSession(sessionId: String) = sessionWriteMutex.withLock {
         database.dao().deleteSessionById(sessionId)
+        settingsStore.setRestEndsAt(null)
     }
 
     private suspend fun renumberPositions(dao: com.buhat.tracker.data.local.BuhatDao, sessionExerciseId: String) {

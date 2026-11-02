@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.buhat.tracker.domain.AppTheme
 import com.buhat.tracker.domain.PreviousSetSource
@@ -30,6 +31,10 @@ data class Settings(
  */
 class SettingsStore(private val dataStore: DataStore<Preferences>) {
 
+    val notificationPermissionRequested = dataStore.data.map {
+        it[NOTIFICATION_PERMISSION_REQUESTED] ?: false
+    }
+
     val settings = dataStore.data.map { prefs ->
         Settings(
             theme = prefs[THEME]?.let { AppTheme.valueOf(it) } ?: AppTheme.DARK,
@@ -54,8 +59,36 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
             prefs[REST_WORKING] = settings.restWorkingSeconds
             prefs[REST_FAILURE] = settings.restFailureSeconds
             prefs[REST_INCREMENT] = settings.restIncrementSeconds
-            settings.restEndsAt?.let { prefs[REST_ENDS_AT] = it } ?: prefs.remove(REST_ENDS_AT)
         }
+    }
+
+    /** Timer state is written on its own so a settings save cannot undo a running rest. */
+    suspend fun setRestEndsAt(endsAt: Long?) {
+        dataStore.edit { prefs ->
+            endsAt?.let { prefs[REST_ENDS_AT] = it } ?: prefs.remove(REST_ENDS_AT)
+        }
+    }
+
+    suspend fun clearRestIfMatches(endsAt: Long): Boolean {
+        var cleared = false
+        dataStore.edit { prefs ->
+            if (prefs[REST_ENDS_AT] == endsAt) {
+                prefs.remove(REST_ENDS_AT)
+                cleared = true
+            }
+        }
+        return cleared
+    }
+
+    suspend fun markNotificationPermissionRequested(): Boolean {
+        var firstRequest = false
+        dataStore.edit { prefs ->
+            if (prefs[NOTIFICATION_PERMISSION_REQUESTED] != true) {
+                prefs[NOTIFICATION_PERMISSION_REQUESTED] = true
+                firstRequest = true
+            }
+        }
+        return firstRequest
     }
 
     suspend fun markSeeded(version: Int) {
@@ -71,6 +104,7 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         val REST_FAILURE = intPreferencesKey("settings_rest_failure_seconds")
         val REST_INCREMENT = intPreferencesKey("settings_rest_increment_seconds")
         val REST_ENDS_AT = longPreferencesKey("settings_rest_ends_at")
+        val NOTIFICATION_PERMISSION_REQUESTED = booleanPreferencesKey("settings_notification_permission_requested")
         val SEED_VERSION = intPreferencesKey("settings_seed_version")
     }
 }

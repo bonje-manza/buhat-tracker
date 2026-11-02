@@ -39,15 +39,19 @@ import com.buhat.tracker.data.ActiveSessionException
 import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.SessionValidationException
 import com.buhat.tracker.data.TemplateCard
+import com.buhat.tracker.timer.RestTimer
 import com.buhat.tracker.ui.components.BuhatCard
 import com.buhat.tracker.ui.components.BuhatEmptyState
 import com.buhat.tracker.ui.components.BuhatPill
 import com.buhat.tracker.ui.components.BuhatSegmentedControl
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun WorkoutsScreen(
     repository: BuhatRepository,
+    restTimer: RestTimer,
     onNewTemplate: () -> Unit,
     onEditTemplate: (String) -> Unit,
     onOpenLibrary: () -> Unit,
@@ -197,7 +201,10 @@ fun WorkoutsScreen(
                     onClick = {
                         startConflict = null
                         scope.launch {
-                            repository.discardSession(activeId)
+                            withContext(NonCancellable) {
+                                repository.discardSession(activeId)
+                                restTimer.cancel()
+                            }
                             try {
                                 repository.startSession(card.template.id)
                                 onOpenActive()

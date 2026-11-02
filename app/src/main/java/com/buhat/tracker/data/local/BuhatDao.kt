@@ -131,6 +131,17 @@ interface BuhatDao {
     @Query("SELECT * FROM WorkoutSession WHERE id = :id")
     suspend fun sessionById(id: String): WorkoutSession?
 
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM WorkoutSession s
+            JOIN SessionExercise se ON se.sessionId = s.id
+            WHERE se.id = :sessionExerciseId AND s.status = 'ACTIVE'
+        )
+        """,
+    )
+    suspend fun sessionExerciseIsActive(sessionExerciseId: String): Boolean
+
     @Update
     suspend fun updateSession(session: WorkoutSession)
 

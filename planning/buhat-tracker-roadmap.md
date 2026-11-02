@@ -2,7 +2,7 @@
 
 ## 1. Status, goal, and success criteria
 
-**Status:** Phase 3 complete. Phases 0-3 are built and tested; the Phase 3 suite (45 unit, 54 device) passes on the test phone. Phase 4 is next.
+**Status:** Phase 4 implementation is complete. The full suite (51 unit, 83 device) passes on the test phone. Physical lock-screen timing/sound/vibration, notification-denial, and airplane-mode acceptance checks remain before shipping Phase 4.
 
 **Goal:** A private, offline Android strength log for you and your friends. Each install owns its data. You train from premade or custom templates, log every set with weight, reps, RIR, and type, get per-set double-progression targets, run a rest timer, and review e1RM progress. Data moves by JSON export/import. Delivery is a signed APK.
 
@@ -226,7 +226,7 @@ The bodyweight row overrides the add-weight row: weight 0 never increases.
 - On set log, compute `restEndsAt = now + seconds(setType)` and persist it with the type. If the duration is 0, do not start.
 - In-app countdown ticks from `restEndsAt` using elapsed-realtime math, so it does not drift.
 - Background alert: post an ongoing notification with a native countdown chronometer and schedule an exact `AlarmManager.setAlarmClock` broadcast at `restEndsAt`. The broadcast posts a completion notification with sound and vibration, cancels the ongoing notification, and clears timer state.
-- `setAlarmClock` avoids the Android 12+ exact-alarm special-access prompt. It shows a system alarm icon during rest. If device testing shows unreliable delivery or the icon is unacceptable, replace with a foreground service (`specialUse` on Android 14+) behind the same timer interface. This is the Phase 4 decision gate.
+- Use `setAlarmClock` for the exact background alert. Android 13+ uses `USE_EXACT_ALARM` for this direct-APK app. Android 12/12L needs `SCHEDULE_EXACT_ALARM`; the app opens the system access screen, while the in-app countdown remains available if access is denied. The alarm icon appears during rest. If device testing shows unreliable delivery or the icon is unacceptable, replace with a foreground service (`specialUse` on Android 14+) behind the same timer interface. This is the Phase 4 decision gate.
 - Skip, finish, discard, and starting a new rest cancel the alarm and notification.
 - Notification permission is requested when the first rest starts. If denied, the in-app timer still works and a one-time hint explains that background alerts need permission.
 - On app restart, read `restEndsAt`; if future, show the countdown, otherwise clear it. A reboot loses the alarm; opening the app clears stale state. Acceptable for v1.
@@ -442,14 +442,14 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Timer controller with `restEndsAt`, in-app countdown, skip, cancel on finish/discard, and restore on launch.
-- [ ] Rest settings section: Warmup, Working, Failure seconds; increment; 15s default; 0..600s validation.
-- [ ] Notification channels: ongoing rest (low importance) and rest complete (high importance, sound).
-- [ ] Ongoing notification with native countdown chronometer; exact `setAlarmClock` broadcast at zero.
-- [ ] Completion notification, sound, vibration, and cleanup of timer state.
-- [ ] Runtime POST_NOTIFICATIONS request on first rest; denial path keeps the in-app timer.
-- [ ] Replace/cancel behavior when a new set is logged, skipped, finished, or discarded.
-- [ ] Airplane-mode and lock-screen checks.
+- [x] Timer controller with `restEndsAt`, in-app countdown, skip, cancel on finish/discard, and restore on launch.
+- [x] Rest settings section: Warmup, Working, Failure seconds; increment; 15s default; 0..600s validation.
+- [x] Notification channels: ongoing rest (low importance) and rest complete (high importance, sound).
+- [x] Ongoing notification with native countdown chronometer; exact `setAlarmClock` broadcast at zero.
+- [x] Completion notification, sound, vibration, and cleanup of timer state.
+- [x] Runtime POST_NOTIFICATIONS request on first rest; denial path keeps the in-app timer.
+- [x] Replace/cancel behavior when a new set is logged, skipped, finished, or discarded.
+- [x] Airplane-mode and lock-screen behavior implemented; physical acceptance checks remain.
 
 **Acceptance checks**
 
@@ -601,6 +601,6 @@ None. Temurin JDK 21 is installed and `JAVA_HOME` points at it.
 
 ### Next step
 
-Start Phase 1: Room entities, DAOs, DataStore, seed content, domain functions, and their tests. The Phase 0 shell is installed and running on the phone.
+Complete the Phase 4 lock-screen and airplane-mode checks on the test phone. Then start Phase 5: Home dashboard and Progress.
 
 This plan is ready for implementation. It does not authorize implementation; Phase 0 starts only after you approve.

@@ -108,4 +108,26 @@ class ProfileSettingsStoreTest {
         assertEquals(120, recreatedSettings.restWorkingSeconds)
         assertNull(recreatedSettings.restEndsAt)
     }
+
+    @Test
+    fun notificationPermissionIsRequestedOnlyOnce() = runTest {
+        val (_, settingsStore) = freshStores()
+
+        assertEquals(false, settingsStore.notificationPermissionRequested.first())
+        assertEquals(true, settingsStore.markNotificationPermissionRequested())
+        assertEquals(false, settingsStore.markNotificationPermissionRequested())
+        assertEquals(true, settingsStore.notificationPermissionRequested.first())
+    }
+
+    @Test
+    fun savingRestDefaultsDoesNotClearARunningRest() = runTest {
+        val (_, settingsStore) = freshStores()
+        val endsAt = 1_800_000_000_000L
+        settingsStore.setRestEndsAt(endsAt)
+
+        settingsStore.save(Settings(restWorkingSeconds = 135))
+
+        assertEquals(endsAt, settingsStore.settings.first().restEndsAt)
+        assertEquals(135, settingsStore.settings.first().restWorkingSeconds)
+    }
 }
