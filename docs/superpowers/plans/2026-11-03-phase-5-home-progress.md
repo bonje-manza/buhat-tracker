@@ -62,8 +62,13 @@
 - [x] Observe red UI assertions before implementation, or mutation-check if device connection is delayed.
 - [x] Complete Home profile including age and unit-aware weight, recent exercise trend, 4-week grid and deltas. Add Progress exercise picker, chart/ranges, all-time tiles, expandable history and confirmed deletion. Handle loading/error/retry and accessible text chart summaries.
 - [x] Run new device tests, confirm they detect intentional missing data/deletion/PR regressions, restore code, then run the full E2E runner. Update the test catalog.
-- [ ] Review complexity then correctness, fix confirmed findings with regression evidence. Run final checks and show terminal output. Keep work on the Phase 5 branch unless integration is requested.
+- [x] Review complexity then correctness, fix confirmed findings with regression evidence. Run final checks and show terminal output. Keep work on the Phase 5 branch unless integration is requested.
 
 ## Verification log
 
 - Baseline: 51 JVM tests passed. JDK 21 and Gradle 8.11.1 verified. ADB initially reported no connected device.
+- Task 1: new summary/boundary tests failed on assertions, then 54 JVM tests passed.
+- Task 2: 3 Room history/deletion tests failed without the feature, then the full suite passed: 54 JVM / 86 device.
+- Task 3: 6 UI tests failed with timeouts, then passed. Mutation checks made range inclusivity, all-time PRs, deletion guard, heaviest tie, and error states fail before restoring.
+- Review: no critical findings. Fixed lint `ProduceStateDoesNotAssignValue`, chip selected semantics, skipped-first default exercise, delete-dialog date, and strengthened deletion/retry tests.
+- Final: `lintDebug` passed; full E2E passed with 54 JVM / 94 device tests, 0 failed; INTERNET permission absent.

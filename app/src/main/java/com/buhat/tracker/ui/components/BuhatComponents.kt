@@ -307,7 +307,7 @@ fun BuhatChoiceChip(
                 if (selected) MaterialTheme.colorScheme.onSurface
                 else MaterialTheme.colorScheme.surfaceVariant,
             )
-            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
     ) {

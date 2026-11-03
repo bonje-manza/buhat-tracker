@@ -143,6 +143,9 @@ class ProgressScreenTest {
         compose.onNodeWithTag("confirm-delete-workout").performClick()
         progressItem("history-$recent").assertExists()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("history-pr-$recent"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        progressItem("progress-best-value").assertTextEquals("120 kg")
+        progressItem("progress-heaviest-value").assertTextEquals("90 kg × 10")
+        progressItem("progress-sessions-value").assertTextEquals("2")
         compose.onNodeWithTag("tab-Home").performClick()
         awaitValue("home-trend-latest", "120 kg")
         homeValue("home-prs-value", "1")
@@ -186,6 +189,22 @@ class ProgressScreenTest {
         openProgress()
         compose.onNodeWithTag("progress-exercise-picker").assertTextContains("Lat Pulldown")
         progressItem("progress-sessions-value").assertTextEquals("0")
+    }
+
+    @Test fun skippedFirstExerciseDoesNotHideLoggedData() {
+        runBlocking {
+            val repo = container.repository
+            val id = repo.startSession(seededId("template", "Push Day A"))
+            // Bench is first but skipped; Incline is second and logged. 20 × 10 gives 26.6667.
+            repo.logSet(repo.sessionExercises(id).first()[1].id, SetType.WORKING, 20.0, 10, 2)
+            repo.finishSession(id)
+        }
+        val incline = seededId("exercise", "Incline Dumbbell Press")
+        awaitValue("home-trend-latest", "26.7 kg")
+        compose.onNodeWithTag("home-exercise-$incline").assertIsSelected()
+        openProgress()
+        compose.onNodeWithTag("progress-exercise-picker").assertTextContains("Incline Dumbbell Press")
+        progressItem("progress-best-value").assertTextEquals("26.7 kg")
     }
 
     @Test fun archivedBodyweightHistoryRemainsSelectableAfterTemplateDeletion() {
@@ -233,24 +252,35 @@ class ProgressScreenTest {
         assertEquals(80.0, runBlocking { container.repository.history().first().single().exercises.first().sets[1].weightKg }, 0.0)
     }
 
-    @Test fun loadFailuresOfferRetryRatherThanClaimingThereAreNoWorkouts() {
+    @Test fun loadFailuresOfferRetryAndRecover() {
         compose.onNodeWithTag("tab-Workouts").performClick()
         // A finished row without finishedAt makes mapping fail on every load, unlike a closed Room DB.
         val id = runBlocking { container.recordBenchWorkout() }
-        runBlocking {
+        val finishedAt = runBlocking { container.repository.session(id)!!.finishedAt!! }
+        fun breakSession() = runBlocking {
             val session = container.repository.session(id)!!
             container.database.dao().updateSession(session.copy(finishedAt = null))
         }
+        fun repairSession() = runBlocking {
+            val session = container.repository.session(id)!!
+            container.database.dao().updateSession(session.copy(finishedAt = finishedAt))
+        }
+        breakSession()
         compose.onNodeWithTag("tab-Progress").performClick()
         awaitTag("progress-retry")
         compose.onNodeWithTag("progress-empty").assertDoesNotExist()
+        repairSession()
         compose.onNodeWithTag("progress-retry").performClick()
-        awaitTag("progress-retry")
+        awaitTag("progress-exercise-picker")
+        progressItem("progress-best-value").assertTextEquals("106.7 kg")
+        compose.onNodeWithTag("tab-Workouts").performClick()
+        breakSession()
         compose.onNodeWithTag("tab-Home").performClick()
         awaitTag("home-retry")
         compose.onNodeWithTag("home-empty").assertDoesNotExist()
+        repairSession()
         compose.onNodeWithTag("home-retry").performClick()
-        awaitTag("home-retry")
+        awaitValue("home-trend-latest", "106.7 kg")
     }
 
     private fun recordSingleSet(weight: Double, reps: Int, daysAgo: Int): String = runBlocking {

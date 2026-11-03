@@ -1,5 +1,6 @@
 package com.buhat.tracker.ui.screens
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -84,6 +85,7 @@ fun ProgressScreen(
 ) {
     var attempt by remember { mutableStateOf(0) }
     var loadError by remember { mutableStateOf(false) }
+    @SuppressLint("ProduceStateDoesNotAssignValue") // Lint cannot see the assignment inside collect.
     val data by produceState<ProgressData?>(null, repository, attempt) {
         loadError = false
         try {
@@ -110,7 +112,13 @@ fun ProgressScreen(
         (history.asReversed().flatMap { it.exercises }.map { it.exerciseId to it.exerciseNameSnapshot } +
             loaded?.exercises.orEmpty().map { it.id to it.name }).distinctBy { it.first }
     }
-    val selected = choices.firstOrNull { it.first == selectedExerciseId } ?: choices.firstOrNull()
+    // Prefer an exercise that has data when no explicit selection exists; skipped first exercises still stay pickable.
+    val loggedIds = remember(history) {
+        history.flatMap { it.exercises }.filter { it.sets.isNotEmpty() }.mapTo(HashSet()) { it.exerciseId }
+    }
+    val selected = choices.firstOrNull { it.first == selectedExerciseId }
+        ?: choices.firstOrNull { it.first in loggedIds }
+        ?: choices.firstOrNull()
     val exerciseId = selected?.first.orEmpty()
     val unit = loaded?.unit ?: WeightUnit.KG
     val ranges = listOf("1M", "3M", "1Y", "All")
@@ -207,7 +215,7 @@ fun ProgressScreen(
             title = { Text("Delete workout?") },
             text = {
                 Column {
-                    Text("Delete ${pending.templateNameSnapshot} and all its sets? This cannot be undone.")
+                    Text("Delete ${pending.templateNameSnapshot} from ${workoutDate(pending.finishedAt)} and all its sets? This cannot be undone.")
                     deleteError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("history-delete-error")) }
                 }
             },

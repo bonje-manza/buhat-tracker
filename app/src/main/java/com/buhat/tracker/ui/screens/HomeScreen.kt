@@ -1,5 +1,6 @@
 package com.buhat.tracker.ui.screens
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -62,6 +63,7 @@ fun HomeScreen(
 ) {
     var attempt by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf(false) }
+    @SuppressLint("ProduceStateDoesNotAssignValue") // Lint cannot see the assignment inside collect.
     val data by produceState<HomeData?>(null, repository, profileStore, attempt) {
         error = false
         try {
@@ -98,7 +100,9 @@ fun HomeScreen(
         val history = loaded.history
         val stats = ProfileStats(history.size, history.minOfOrNull { it.finishedAt })
         val recent = history.maxByOrNull { it.finishedAt }?.exercises.orEmpty().take(4)
-        val exercise = recent.firstOrNull { it.exerciseId == selectedExercise } ?: recent.firstOrNull()
+        val exercise = recent.firstOrNull { it.exerciseId == selectedExercise }
+            ?: recent.firstOrNull { it.sets.isNotEmpty() }
+            ?: recent.firstOrNull()
         val now = System.currentTimeMillis()
         BuhatCard(Modifier.testTag("profile-card").clickable(onClick = onOpenProfile)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
