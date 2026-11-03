@@ -256,6 +256,30 @@ class BuhatRepository(
     fun loggedSets(sessionExerciseId: String): Flow<List<LoggedSet>> =
         database.dao().observeSetsFor(sessionExerciseId)
 
+    fun history(): Flow<List<HistorySession>> = database.dao().observeFinishedWorkouts().map { workouts ->
+        workouts.map { workout ->
+            HistorySession(
+                id = workout.session.id,
+                templateIdSnapshot = workout.session.templateIdSnapshot,
+                finishedAt = requireNotNull(workout.session.finishedAt),
+                templateNameSnapshot = workout.session.templateNameSnapshot,
+                exercises = workout.exercises.sortedBy { it.exercise.position }.map { row ->
+                    HistoryExercise(
+                        exerciseId = row.exercise.exerciseId,
+                        exerciseNameSnapshot = row.exercise.exerciseNameSnapshot,
+                        sets = row.sets.sortedBy { it.completedAt }.map { it.toRecord() },
+                    )
+                },
+            )
+        }
+    }
+
+    suspend fun deleteFinishedSession(sessionId: String) {
+        if (database.dao().deleteFinishedSession(sessionId) == 0) {
+            throw SessionValidationException("Finished workout not found.")
+        }
+    }
+
     /** Finished sessions holding this exercise, newest last, for per-set progression. */
     fun historyForExercise(exerciseId: String): Flow<List<HistorySession>> =
         database.dao().observeHistoryRowsFor(exerciseId).map { rows ->

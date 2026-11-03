@@ -3,6 +3,8 @@ package com.buhat.tracker.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -134,7 +136,8 @@ fun BuhatSegmentedControl(
             .fillMaxWidth()
             .clip(RoundedCornerShape(50))
             .background(scheme.surfaceVariant)
-            .padding(4.dp),
+            .padding(4.dp)
+            .selectableGroup(),
     ) {
         options.forEachIndexed { index, option ->
             val selected = index == selectedIndex
@@ -144,8 +147,9 @@ fun BuhatSegmentedControl(
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(50))
                     .background(if (selected) scheme.onSurface else Color.Transparent)
-                    .clickable(
-                        role = androidx.compose.ui.semantics.Role.Button,
+                    .selectable(
+                        selected = selected,
+                        role = androidx.compose.ui.semantics.Role.RadioButton,
                         onClick = { onSelect(index) },
                     )
                     .testTag("segmented-$option")

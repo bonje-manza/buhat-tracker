@@ -102,6 +102,25 @@ fun fourWeekStats(history: List<HistorySession>, nowMillis: Long): FourWeekStats
 
 data class TrendPoint(val atMillis: Long, val e1rm: Double)
 
+data class ExerciseStats(
+    val bestE1rm: Double?,
+    val heaviestSet: LoggedSetRecord?,
+    val sessionCount: Int,
+)
+
+fun exerciseStats(history: List<HistorySession>, exerciseId: String): ExerciseStats {
+    val sessionSets = history.map { session ->
+        session.exercises.filter { it.exerciseId == exerciseId }
+            .flatMap { it.sets }.filter { it.setType.countsForProgression }
+    }
+    val sets = sessionSets.flatten()
+    return ExerciseStats(
+        bestE1rm = sets.mapNotNull { e1rm(it.weightKg, it.reps) }.maxOrNull(),
+        heaviestSet = sets.maxWithOrNull(compareBy<LoggedSetRecord> { it.weightKg }.thenBy { it.reps }),
+        sessionCount = sessionSets.count { it.isNotEmpty() },
+    )
+}
+
 fun e1rmTrend(
     history: List<HistorySession>,
     exerciseId: String,

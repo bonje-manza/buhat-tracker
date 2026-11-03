@@ -1,6 +1,7 @@
 package com.buhat.tracker.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -167,5 +168,58 @@ class AnalyticsTest {
         // All = no cutoff, oldest session first, future excluded.
         assertEquals(listOf(5L * DAY, 10L * DAY, 70L * DAY, NOW), all.map { it.atMillis })
         assertEquals(120.0, all[0].e1rm, 0.0001) // 90 kg × 10
+    }
+
+    @Test
+    fun exerciseSummaryUsesRecordedWorkingSetsAndBreaksWeightTiesByReps() {
+        // Recorded Phase 3 session: 80×10/9/8. Volume 800+720+640=2160, best e1RM 106.6667.
+        val history = listOf(
+            session("recorded", NOW, "bench" to listOf(
+                set("warmup", 100.0, 30, SetType.WARMUP),
+                set("eight", 80.0, 8, SetType.FAILURE),
+                set("nine", 80.0, 9),
+                set("ten", 80.0, 10),
+            )),
+            session("warmup-only", NOW, "bench" to listOf(set("w", 100.0, 30, SetType.WARMUP))),
+            session("other", NOW, "squat" to listOf(set("s", 200.0, 5))),
+        )
+
+        val summary = exerciseStats(history, "bench")
+        assertNotNull(summary.bestE1rm)
+        assertEquals(106.6667, summary.bestE1rm!!, 0.0001)
+        assertEquals("ten", summary.heaviestSet!!.id)
+        assertEquals(1, summary.sessionCount)
+        val stats = fourWeekStats(history.take(1), NOW)
+        assertEquals(2160.0, stats.volumeKg.current, 0.0)
+        assertEquals(3.0, stats.workingSets.current, 0.0)
+    }
+
+    @Test
+    fun exerciseSummaryKeepsBodyweightSessionsWithoutInventingAnE1rm() {
+        val history = listOf(
+            session("bodyweight", NOW, "pullup" to listOf(set("b", 0.0, 10))),
+            session("zero-reps", NOW, "pullup" to listOf(set("z", 20.0, 0))),
+        )
+        val summary = exerciseStats(history, "pullup")
+        assertNull(summary.bestE1rm)
+        assertEquals(2, summary.sessionCount)
+        assertEquals("z", summary.heaviestSet!!.id)
+        val empty = exerciseStats(history, "missing")
+        assertNull(empty.bestE1rm)
+        assertNull(empty.heaviestSet)
+        assertEquals(0, empty.sessionCount)
+    }
+
+    @Test
+    fun yearlyTrendIncludesBoundaryAndPrsKeepEarlierRecordsOutsideRange() {
+        val now = 400L * DAY
+        val history = listOf(
+            session("old", 34L * DAY, "bench" to listOf(set("record", 100.0, 6))),
+            session("edge", 35L * DAY, "bench" to listOf(set("edge-set", 80.0, 10))),
+            session("recent", now, "bench" to listOf(set("tie", 100.0, 6))),
+        )
+        assertEquals(listOf(35L * DAY, now), e1rmTrend(history, "bench", 365, now).map { it.atMillis })
+        assertEquals(setOf("record"), prSetIds(history))
+        assertEquals(setOf("edge-set", "tie"), prSetIds(history.drop(1)))
     }
 }

@@ -20,6 +20,7 @@ data class LoggedSetRecord(
 data class HistoryExercise(
     val exerciseId: String,
     val sets: List<LoggedSetRecord>,
+    val exerciseNameSnapshot: String = exerciseId,
 )
 
 data class HistorySession(
@@ -27,4 +28,5 @@ data class HistorySession(
     val templateIdSnapshot: String,
     val finishedAt: Long,
     val exercises: List<HistoryExercise>,
+    val templateNameSnapshot: String = templateIdSnapshot,
 )

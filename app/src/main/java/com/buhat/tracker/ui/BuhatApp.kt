@@ -3,12 +3,9 @@ package com.buhat.tracker.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -40,6 +37,7 @@ import com.buhat.tracker.ui.screens.ExerciseEditorScreen
 import com.buhat.tracker.ui.screens.ExerciseLibraryScreen
 import com.buhat.tracker.ui.screens.HomeScreen
 import com.buhat.tracker.ui.screens.ProfileEditorScreen
+import com.buhat.tracker.ui.screens.ProgressScreen
 import com.buhat.tracker.ui.screens.SettingsScreen
 import com.buhat.tracker.ui.screens.TemplateEditorScreen
 import com.buhat.tracker.ui.screens.WorkoutsScreen
@@ -116,6 +114,8 @@ private fun TabsScreen(
     onEditTemplate: (String) -> Unit,
 ) {
     var selected by rememberSaveable { mutableStateOf(BuhatTab.Home) }
+    var progressExerciseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var progressRange by rememberSaveable { mutableStateOf(1) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -132,6 +132,10 @@ private fun TabsScreen(
                     profileStore = profileStore,
                     onOpenProfile = onOpenProfile,
                     onOpenSettings = onOpenSettings,
+                    onOpenProgress = { id ->
+                        progressExerciseId = id
+                        selected = BuhatTab.Progress
+                    },
                 )
                 BuhatTab.Workouts -> WorkoutsScreen(
                     repository = repository,
@@ -146,7 +150,13 @@ private fun TabsScreen(
                     restTimer = restTimer,
                     onStartWorkout = { selected = BuhatTab.Workouts },
                 )
-                BuhatTab.Progress -> EmptyScreen(BuhatTab.Progress)
+                BuhatTab.Progress -> ProgressScreen(
+                    repository = repository,
+                    selectedExerciseId = progressExerciseId,
+                    onSelectExercise = { progressExerciseId = it },
+                    rangeIndex = progressRange,
+                    onSelectRange = { progressRange = it },
+                )
             }
         }
     }
@@ -187,22 +197,5 @@ private fun BuhatBottomBar(selected: BuhatTab, onSelect: (BuhatTab) -> Unit) {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun EmptyScreen(tab: BuhatTab) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("screen-${tab.name}")
-            .padding(horizontal = 24.dp),
-    ) {
-        Spacer(Modifier.height(24.dp))
-        Text(
-            text = tab.label,
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.headlineLarge,
-        )
     }
 }

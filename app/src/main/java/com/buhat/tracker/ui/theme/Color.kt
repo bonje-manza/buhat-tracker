@@ -11,6 +11,7 @@ val BuhatLime = Color(0xFFC8E86B)
 val BuhatOrange = Color(0xFFFF8250)
 val BuhatAmber = Color(0xFFFFC145)
 val BuhatGreen = Color(0xFF4ADE80)
+val BuhatLightGreen = Color(0xFF146C43)
 val BuhatRed = Color(0xFFFF5C5C)
 
 val BuhatLightBackground = Color(0xFFF6F6F8)

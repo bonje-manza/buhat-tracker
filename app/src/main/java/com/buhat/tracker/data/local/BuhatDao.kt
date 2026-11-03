@@ -1,9 +1,12 @@
 package com.buhat.tracker.data.local
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Relation
+import androidx.room.Transaction
 import androidx.room.Update
 import com.buhat.tracker.domain.SetType
 import kotlinx.coroutines.flow.Flow
@@ -176,6 +179,13 @@ interface BuhatDao {
     )
     fun observeHistoryRowsFor(exerciseId: String): Flow<List<HistorySetRow>>
 
+    @Transaction
+    @Query("SELECT * FROM WorkoutSession WHERE status = 'FINISHED' ORDER BY finishedAt, id")
+    fun observeFinishedWorkouts(): Flow<List<FinishedWorkout>>
+
+    @Query("DELETE FROM WorkoutSession WHERE id = :id AND status = 'FINISHED'")
+    suspend fun deleteFinishedSession(id: String): Int
+
     @Query("DELETE FROM Template WHERE id IN (:ids)")
     suspend fun deleteTemplates(ids: List<String>)
 
@@ -223,4 +233,16 @@ data class HistorySetRow(
     val reps: Int,
     val rir: Int?,
     val completedAt: Long,
+)
+
+data class FinishedWorkout(
+    @Embedded val session: WorkoutSession,
+    @Relation(parentColumn = "id", entityColumn = "sessionId", entity = SessionExercise::class)
+    val exercises: List<HistoryExerciseRows>,
+)
+
+data class HistoryExerciseRows(
+    @Embedded val exercise: SessionExercise,
+    @Relation(parentColumn = "id", entityColumn = "sessionExerciseId")
+    val sets: List<LoggedSet>,
 )

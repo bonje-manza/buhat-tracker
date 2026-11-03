@@ -470,14 +470,14 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Home profile card: name, training since, total workouts, gender/age/weight/height, Settings button.
-- [ ] Strength trend card: recent-exercise chips (most recent workout's exercises, max 4), 3-month e1RM chart, latest value, change, and a "View progress" link.
-- [ ] 4-week analytics grid: workouts, working sets, volume, new PRs, deltas vs prior 4 weeks.
-- [ ] Progress screen: exercise picker, 1M/3M/1Y/All selector defaulting to 3M, e1RM chart, best e1RM, heaviest set, sessions.
-- [ ] Past workouts: date, template snapshot, best set, e1RM, PR badge, expandable sets, delete workout with confirmation.
-- [ ] Empty states for no profile, no history, and no data in range.
-- [ ] Chart accessibility: text summary, content descriptions, no color-only meaning.
-- [ ] Fixture-based tests for analytics and PR badges.
+- [x] Home profile card: name, training since, total workouts, gender/age/weight/height, Settings button.
+- [x] Strength trend card: recent-exercise chips (most recent workout's exercises, max 4), 3-month e1RM chart, latest value, change, and a "View progress" link.
+- [x] 4-week analytics grid: workouts, working sets, volume, new PRs, deltas vs prior 4 weeks.
+- [x] Progress screen: exercise picker, 1M/3M/1Y/All selector defaulting to 3M, e1RM chart, best e1RM, heaviest set, sessions.
+- [x] Past workouts: date, template snapshot, best set, e1RM, PR badge, expandable sets, delete workout with confirmation.
+- [x] Empty states for no profile, no history, and no data in range.
+- [x] Chart accessibility: text summary, content descriptions, no color-only meaning.
+- [x] Fixture-based tests for analytics and PR badges.
 
 **Acceptance checks**
 

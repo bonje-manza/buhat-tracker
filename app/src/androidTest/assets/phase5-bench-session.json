@@ -1,0 +1,20 @@
+{
+  "id": "4d493615-e860-439c-bd19-8448fa282d06",
+  "templateIdSnapshot": "b218a83a-f2aa-33ed-abc3-9114669c67b9",
+  "templateNameSnapshot": "Push Day A",
+  "finishedAt": 1793677125749,
+  "exercises": [
+    {
+      "exerciseId": "54530e00-8956-3968-8631-d1fa2093311f",
+      "exerciseNameSnapshot": "Bench Press",
+      "sets": [
+        {"id": "acf2f348-e377-4119-b985-7004bae96860", "setType": "WARMUP", "workingIndex": null, "weightKg": 100, "reps": 20, "rir": 2, "completedAt": 1793677121738},
+        {"id": "18dbb905-ab09-4a7e-ab1d-72eed0f18723", "setType": "WORKING", "workingIndex": 1, "weightKg": 80, "reps": 10, "rir": 2, "completedAt": 1793677122742},
+        {"id": "6514355a-1bb5-4437-98e8-d2c53eb4fe12", "setType": "WORKING", "workingIndex": 2, "weightKg": 80, "reps": 9, "rir": 2, "completedAt": 1793677123806},
+        {"id": "fbfa778e-f8fc-431e-afed-9d896d05c477", "setType": "FAILURE", "workingIndex": 3, "weightKg": 80, "reps": 8, "rir": 2, "completedAt": 1793677124965}
+      ]
+    },
+    {"exerciseId": "d579e286-5c4e-38c4-9bba-6018beed6d1d", "exerciseNameSnapshot": "Incline Dumbbell Press", "sets": []},
+    {"exerciseId": "80c2fd80-3e78-3d77-ba9d-1f78d0ca9964", "exerciseNameSnapshot": "Cable Fly", "sets": []}
+  ]
+}
