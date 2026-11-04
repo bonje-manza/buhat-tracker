@@ -85,4 +85,16 @@ class ContentRulesTest {
         assertEquals("That name is already used.", validateExerciseName("Belt Squat", listOf("belt squat")))
         assertNull(validateExerciseName("Belt Squat", listOf("back squat")))
     }
+
+    @Test
+    fun namesAreCappedAtTwoHundredCharacters() {
+        val max = "a".repeat(200)
+        val over = "a".repeat(201)
+        assertNull(validateExerciseName(max, emptyList()))
+        assertEquals("Name must be 200 characters or fewer.", validateExerciseName(over, emptyList()))
+        assertEquals(
+            "Name must be 200 characters or fewer.",
+            validateTemplate(over, emptyList(), listOf(draft())),
+        )
+    }
 }

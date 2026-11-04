@@ -50,7 +50,12 @@ enum class BuhatTab(val label: String) {
 }
 
 @Composable
-fun BuhatApp(repository: BuhatRepository, profileStore: ProfileStore, restTimer: RestTimer) {
+fun BuhatApp(
+    repository: BuhatRepository,
+    profileStore: ProfileStore,
+    restTimer: RestTimer,
+    backupController: BackupController,
+) {
     val nav = rememberNavController()
 
     NavHost(navController = nav, startDestination = "tabs") {
@@ -89,12 +94,13 @@ fun BuhatApp(repository: BuhatRepository, profileStore: ProfileStore, restTimer:
             )
         }
         composable("profile") {
-            ProfileEditorScreen(profileStore = profileStore, onBack = { nav.popBackStack() })
+            ProfileEditorScreen(profileStore = profileStore, settingsStore = repository.settingsStore,
+                onBack = { nav.popBackStack() })
         }
         composable("settings") {
             SettingsScreen(
-                profileStore = profileStore,
-                settingsStore = repository.settingsStore,
+                repository = repository,
+                backupController = backupController,
                 onBack = { nav.popBackStack() },
                 onOpenProfile = { nav.navigate("profile") },
             )

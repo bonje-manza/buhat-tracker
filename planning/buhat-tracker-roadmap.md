@@ -496,13 +496,13 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Settings screen: appearance, units, previous-set source, rest defaults/increment (complete Phase 4), data section, profile link.
-- [ ] Export JSON via CreateDocument; include profile, settings, exercises, templates, template exercises, sessions, session exercises, and sets; exclude rest state (an active session cannot be exported).
-- [ ] Import JSON via OpenDocument; validate version, fields, enums, ranges, IDs, references, timestamps; show counts and export date.
-- [ ] Replace-all confirmation; Room transaction; then profile/settings; mark seed complete; clear rest state; reload flows.
-- [ ] Block export/import while a session is active.
-- [ ] Specific errors for not-a-backup, newer version, corrupt file, and write failure.
-- [ ] Round-trip and failure tests.
+- [x] Settings screen: appearance, units, previous-set source, rest defaults/increment (complete Phase 4), data section, profile link.
+- [x] Export JSON via CreateDocument; include profile, settings, exercises, templates, template exercises, sessions, session exercises, and sets; exclude rest state (an active session cannot be exported).
+- [x] Import JSON via OpenDocument; validate version, fields, enums, ranges, IDs, references, timestamps; show counts and export date.
+- [x] Replace-all confirmation; Room transaction; then profile/settings; mark seed complete; clear rest state; reload flows.
+- [x] Block export/import while a session is active.
+- [x] Specific errors for not-a-backup, newer version, corrupt file, and write failure.
+- [x] Round-trip and failure tests.
 
 **Acceptance checks**
 

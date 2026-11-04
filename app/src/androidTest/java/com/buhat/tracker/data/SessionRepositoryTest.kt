@@ -43,8 +43,8 @@ class SessionRepositoryTest {
             ApplicationProvider.getApplicationContext<android.content.Context>().cacheDir,
             "buhat-session-${UUID.randomUUID()}.preferences_pb",
         )
-        val settings = SettingsStore(PreferenceDataStoreFactory.create(scope = storeScope) { file })
-        repo = BuhatRepository(db, settings)
+        val dataStore = PreferenceDataStoreFactory.create(scope = storeScope) { file }
+        repo = BuhatRepository(db, SettingsStore(dataStore), ProfileStore(dataStore))
         repo.seedIfNeeded()
     }
 
@@ -205,7 +205,7 @@ class SessionRepositoryTest {
         repo.logSet(bench.id, SetType.WORKING, weightKg = 80.0, reps = 8, rir = 2)
 
         // Same database, new repository: what process death and relaunch observes.
-        val reopened = BuhatRepository(db, repo.settingsStore)
+        val reopened = BuhatRepository(db, repo.settingsStore, repo.profileStore)
 
         assertEquals(sessionId, reopened.activeSession().first()!!.id)
         val sets = reopened.loggedSets(bench.id).first()

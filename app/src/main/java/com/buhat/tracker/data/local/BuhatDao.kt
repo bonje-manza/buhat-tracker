@@ -203,6 +203,42 @@ interface BuhatDao {
 
     @Query("SELECT COUNT(*) FROM TemplateExercise GROUP BY templateId")
     suspend fun templateExerciseCountsByTemplate(): List<Int>
+
+    @Query("SELECT * FROM Exercise ORDER BY createdAt, id")
+    suspend fun allExercises(): List<Exercise>
+
+    @Query("SELECT * FROM Template ORDER BY createdAt, id")
+    suspend fun allTemplates(): List<Template>
+
+    @Query("SELECT * FROM TemplateExercise ORDER BY templateId, position")
+    suspend fun allTemplateExercises(): List<TemplateExercise>
+
+    @Query("SELECT * FROM WorkoutSession ORDER BY startedAt, id")
+    suspend fun allSessions(): List<WorkoutSession>
+
+    @Query("SELECT * FROM SessionExercise ORDER BY sessionId, position")
+    suspend fun allSessionExercises(): List<SessionExercise>
+
+    @Query("SELECT * FROM LoggedSet ORDER BY completedAt, id")
+    suspend fun allSets(): List<LoggedSet>
+
+    @Query("DELETE FROM LoggedSet")
+    suspend fun deleteAllSets()
+
+    @Query("DELETE FROM SessionExercise")
+    suspend fun deleteAllSessionExercises()
+
+    @Query("DELETE FROM WorkoutSession")
+    suspend fun deleteAllSessions()
+
+    @Query("DELETE FROM TemplateExercise")
+    suspend fun deleteAllTemplateExercises()
+
+    @Query("DELETE FROM Template")
+    suspend fun deleteAllTemplates()
+
+    @Query("DELETE FROM Exercise")
+    suspend fun deleteAllExercises()
 }
 
 data class TemplateExerciseRow(

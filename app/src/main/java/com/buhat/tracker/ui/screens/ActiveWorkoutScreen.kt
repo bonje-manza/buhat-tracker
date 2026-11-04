@@ -244,14 +244,18 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             templateIdSnapshot = session.templateIdSnapshot,
         )
     }
-    val target = selected?.let { nextTarget(source, it.repMin, it.repMax) }
+    val target = selected?.let { nextTarget(source, it.repMin, it.repMax, settings.unit) }
     val prefill = prefillFor(source, records.lastOrNull())
     val unit = settings.unit
 
     // Prefill keys include the source values: history flows in after the first frame, and the
     // form must adopt them without wiping a user edit (prefill only changes on new data).
-    var weightText by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps) {
+    var weightText by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps, unit) {
         mutableStateOf(prefill.weightKg?.let { formatWeightValue(it, unit) } ?: "")
+    }
+    // kg keeps generated values exact; parsing the rounded lb display back would drift.
+    var weightKg by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps, unit) {
+        mutableStateOf(prefill.weightKg)
     }
     var repsText by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps) {
         mutableStateOf(prefill.reps?.toString() ?: "")
@@ -267,17 +271,20 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     fun displayToKg(text: String): Double? =
         text.trim().replace(',', '.').toDoubleOrNull()?.let { if (unit == WeightUnit.LB) lbToKg(it) else it }
 
+    fun setWeight(kg: Double?) {
+        weightKg = kg
+        weightText = kg?.let { formatWeightValue(it, unit) } ?: ""
+    }
+
     fun stepWeight(delta: Int) {
-        val kg = displayToKg(weightText) ?: 0.0
-        val next = (kg + delta * WEIGHT_INCREMENT_KG).coerceIn(0.0, 1000.0)
-        weightText = formatWeightValue(next, unit)
+        setWeight(((weightKg ?: 0.0) + delta * WEIGHT_INCREMENT_KG).coerceIn(0.0, 1000.0))
     }
 
     fun log() {
         val exercise = selected ?: return
-        val weightKg = displayToKg(weightText)
+        val kg = weightKg
         val reps = repsText.trim().toIntOrNull()
-        if (weightKg == null) {
+        if (kg == null) {
             error = "Enter a weight."
             return
         }
@@ -288,7 +295,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
         scope.launch {
             try {
                 withContext(NonCancellable) {
-                    repository.logSet(exercise.id, SET_TYPES[typeIndex], weightKg, reps, rir)
+                    repository.logSet(exercise.id, SET_TYPES[typeIndex], kg, reps, rir)
                     val nextRest = repository.settingsStore.settings.first().restEndsAt
                         ?.takeIf { it > System.currentTimeMillis() }
                     if (nextRest != null) restTimer.start(nextRest) else restTimer.cancel()
@@ -451,7 +458,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                 )
             }
             TextButton(onClick = {
-                weightText = nextTargetValue.weightKg?.let { formatWeightValue(it, unit) } ?: ""
+                setWeight(nextTargetValue.weightKg)
                 repsText = nextTargetValue.reps.toString()
             }, modifier = Modifier.testTag("use-target")) {
                 Text("Use target")
@@ -520,7 +527,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             typeIndex = typeIndex,
             onTypeIndexChange = { typeIndex = it },
             weightText = weightText,
-            onWeightChange = { weightText = it },
+            onWeightChange = { text -> weightText = text; weightKg = displayToKg(text) },
             onWeightStep = ::stepWeight,
             repsText = repsText,
             onRepsChange = { repsText = it },
@@ -656,7 +663,10 @@ private fun SetEditorDialog(
 ) {
     var typeIndex by remember(set.id) { mutableStateOf(SET_TYPES.indexOf(set.setType)) }
     var weightText by remember(set.id) { mutableStateOf(formatWeightValue(set.weightKg, unit)) }
+    var weightKg by remember(set.id) { mutableStateOf<Double?>(set.weightKg) }
     var repsText by remember(set.id) { mutableStateOf(set.reps.toString()) }
+    fun parseWeight(text: String): Double? =
+        text.trim().replace(',', '.').toDoubleOrNull()?.let { if (unit == WeightUnit.LB) lbToKg(it) else it }
     var rir by remember(set.id) { mutableStateOf(set.rir ?: 2) }
     var error by remember(set.id) { mutableStateOf<String?>(null) }
 
@@ -669,14 +679,11 @@ private fun SetEditorDialog(
                     typeIndex = typeIndex,
                     onTypeIndexChange = { typeIndex = it },
                     weightText = weightText,
-                    onWeightChange = { weightText = it },
+                    onWeightChange = { text -> weightText = text; weightKg = parseWeight(text) },
                     onWeightStep = { delta ->
-                        val kg = weightText.trim().replace(',', '.').toDoubleOrNull()
-                            ?.let { if (unit == WeightUnit.LB) lbToKg(it) else it } ?: 0.0
-                        weightText = formatWeightValue(
-                            (kg + delta * WEIGHT_INCREMENT_KG).coerceIn(0.0, 1000.0),
-                            unit,
-                        )
+                        val next = ((weightKg ?: 0.0) + delta * WEIGHT_INCREMENT_KG).coerceIn(0.0, 1000.0)
+                        weightKg = next
+                        weightText = formatWeightValue(next, unit)
                     },
                     repsText = repsText,
                     onRepsChange = { repsText = it },
@@ -700,19 +707,14 @@ private fun SetEditorDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val weight = weightText.trim().replace(',', '.').toDoubleOrNull()
+                    val weight = weightKg
                     val reps = repsText.trim().toIntOrNull()
                     if (weight == null) {
                         error = "Enter a weight."
                     } else if (reps == null) {
                         error = "Enter reps."
                     } else {
-                        onSave(
-                            SET_TYPES[typeIndex],
-                            if (unit == WeightUnit.LB) lbToKg(weight) else weight,
-                            reps,
-                            rir,
-                        )
+                        onSave(SET_TYPES[typeIndex], weight, reps, rir)
                     }
                 },
                 modifier = Modifier.testTag("save-set"),

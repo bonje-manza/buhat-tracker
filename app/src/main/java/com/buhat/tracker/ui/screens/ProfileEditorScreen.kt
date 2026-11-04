@@ -27,7 +27,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.buhat.tracker.data.Profile
 import com.buhat.tracker.data.ProfileStore
+import com.buhat.tracker.data.SettingsStore
+import com.buhat.tracker.domain.WeightUnit
+import com.buhat.tracker.domain.formatWeightValue
+import com.buhat.tracker.domain.lbToKg
 import com.buhat.tracker.domain.formatKg
+import com.buhat.tracker.domain.validateTextLength
 import com.buhat.tracker.ui.components.BuhatScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,20 +41,24 @@ import kotlinx.coroutines.withContext
 @Composable
 fun ProfileEditorScreen(
     profileStore: ProfileStore,
+    settingsStore: SettingsStore,
     onBack: () -> Unit,
 ) {
     val profile by remember(profileStore) { profileStore.profile }.collectAsState(null)
+    val settings by remember(settingsStore) { settingsStore.settings }.collectAsState(null)
 
     BuhatScreen(title = "Profile", onBack = onBack) {
         val loaded = profile
-        if (loaded == null) {
+        val unit = settings?.unit
+        if (loaded == null || unit == null) {
             Text("Loading...", modifier = Modifier.padding(24.dp))
             return@BuhatScreen
         }
         var name by rememberSaveable(loaded) { mutableStateOf(loaded.name.orEmpty()) }
         var gender by rememberSaveable(loaded) { mutableStateOf(loaded.gender.orEmpty()) }
         var age by rememberSaveable(loaded) { mutableStateOf(loaded.age?.toString().orEmpty()) }
-        var weight by rememberSaveable(loaded) { mutableStateOf(loaded.weightKg?.let(::formatKg).orEmpty()) }
+        val displayedWeight = loaded.weightKg?.let { formatWeightValue(it, unit) }.orEmpty()
+        var weight by rememberSaveable(loaded, unit) { mutableStateOf(displayedWeight) }
         var height by rememberSaveable(loaded) { mutableStateOf(loaded.heightCm?.toString().orEmpty()) }
         var error by remember { mutableStateOf<String?>(null) }
         val scope = rememberCoroutineScope()
@@ -90,7 +99,7 @@ fun ProfileEditorScreen(
                 onValueChange = { new ->
                     if (new.count { it == '.' } <= 1 && new.all { it.isDigit() || it == '.' }) weight = new
                 },
-                label = { Text("Weight (kg)") },
+                label = { Text("Weight (${unit.name.lowercase()})") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth().testTag("profile-weight"),
@@ -117,9 +126,12 @@ fun ProfileEditorScreen(
             Button(
                 onClick = {
                     val ageValue = age.toIntOrNull()
-                    val weightValue = weight.toDoubleOrNull()
+                     val weightValue = if (weight == displayedWeight) loaded.weightKg
+                         else weight.toDoubleOrNull()?.let { if (unit == WeightUnit.LB) lbToKg(it) else it }
                     val heightValue = height.toIntOrNull()
-                    error = when {
+                    error = validateTextLength(name, "Name")
+                        ?: validateTextLength(gender, "Gender")
+                        ?: when {
                         age.isNotBlank() && (ageValue == null || ageValue !in 1..120) -> "Enter an age from 1 to 120."
                         weight.isNotBlank() && (weightValue == null || weightValue !in 0.0..1000.0) ->
                             "Enter a weight from 0 to 1000 kg."

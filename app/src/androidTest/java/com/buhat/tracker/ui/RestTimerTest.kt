@@ -366,7 +366,7 @@ class RestTimerTest {
         compose.onNodeWithTag("screen-Settings").assertIsDisplayed()
 
         awaitTag("rest-working-plus")
-        compose.onNodeWithTag("rest-working-plus").performClick()
+        compose.onNodeWithTag("rest-working-plus").performScrollTo().performClick()
 
         compose.waitUntil(5_000) {
             runBlocking { container.settingsStore.settings.first().restWorkingSeconds } == 135

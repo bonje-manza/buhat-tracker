@@ -12,7 +12,17 @@ data class TemplateExerciseDraft(
 
 class ContentValidationException(message: String) : IllegalArgumentException(message)
 
+const val MAX_TEXT_LENGTH = 200
+
+fun validateTextLength(text: String?, field: String): String? =
+    if (text != null && text.trim().length > MAX_TEXT_LENGTH) {
+        "$field must be $MAX_TEXT_LENGTH characters or fewer."
+    } else {
+        null
+    }
+
 fun validateExerciseName(name: String, takenNames: Collection<String>): String? {
+    validateTextLength(name, "Name")?.let { return it }
     if (name.isBlank()) return "Name is required."
     if (name.trim().lowercase() in takenNames) return "That name is already used."
     return null

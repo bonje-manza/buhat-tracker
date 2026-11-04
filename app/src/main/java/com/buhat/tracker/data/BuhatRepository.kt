@@ -1,6 +1,7 @@
 package com.buhat.tracker.data
 
 import androidx.room.withTransaction
+import com.buhat.tracker.BuildConfig
 import com.buhat.tracker.data.local.BuhatDatabase
 import com.buhat.tracker.data.local.Exercise
 import com.buhat.tracker.data.local.HistorySetRow
@@ -32,6 +33,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 fun seededId(type: String, name: String): String =
     UUID.nameUUIDFromBytes("$type:$name".toByteArray()).toString()
@@ -41,6 +45,8 @@ class ActiveSessionException(val sessionId: String) : Exception("A workout is al
 class SessionValidationException(message: String) : Exception(message)
 
 class NoWorkingSetsException : Exception("Log at least one working set before finishing.")
+
+private const val ACTIVE_WORKOUT_BLOCK = "Finish or discard the workout first."
 
 
 data class TemplateCard(
@@ -59,6 +65,7 @@ enum class DeleteExerciseResult { DELETED, ARCHIVED }
 class BuhatRepository(
     private val database: BuhatDatabase,
     val settingsStore: SettingsStore,
+    val profileStore: ProfileStore,
 ) {
 
     // Serialize set writes with finish/discard so a late timer write cannot resurrect a rest.
@@ -295,7 +302,7 @@ class BuhatRepository(
             }
         }
 
-    suspend fun startSession(templateId: String): String {
+    suspend fun startSession(templateId: String): String = sessionWriteMutex.withLock {
         val dao = database.dao()
         dao.activeSession()?.let { throw ActiveSessionException(it.id) }
         val template = dao.templateById(templateId)
@@ -333,7 +340,7 @@ class BuhatRepository(
                 },
             )
         }
-        return sessionId
+        sessionId
     }
 
     suspend fun logSet(
@@ -453,10 +460,83 @@ class BuhatRepository(
         completedAt = completedAt,
     )
 
+    suspend fun exportBackup(): String = withContext(Dispatchers.IO) {
+        sessionWriteMutex.withLock {
+            database.withTransaction {
+                val dao = database.dao()
+                if (dao.activeSessionCount() > 0) throw BackupException(ACTIVE_WORKOUT_BLOCK)
+                encodeBackup(
+                    Backup(
+                        formatVersion = BACKUP_FORMAT_VERSION,
+                        appVersion = BuildConfig.VERSION_NAME,
+                        exportedAt = System.currentTimeMillis(),
+                        profile = profileStore.profile.first().toBackup(),
+                        settings = settingsStore.settings.first().toBackup(),
+                        exercises = dao.allExercises().map { it.toBackup() },
+                        templates = dao.allTemplates().map { it.toBackup() },
+                        templateExercises = dao.allTemplateExercises().map { it.toBackup() },
+                        sessions = dao.allSessions().map { it.toBackup() },
+                        sessionExercises = dao.allSessionExercises().map { it.toBackup() },
+                        sets = dao.allSets().map { it.toBackup() },
+                    ),
+                )
+            }
+        }
+    }
+
+    suspend fun previewBackup(text: String): BackupSummary = withContext(Dispatchers.IO) {
+        if (database.dao().activeSessionCount() > 0) throw BackupException(ACTIVE_WORKOUT_BLOCK)
+        decodeBackup(text).summary()
+    }
+
+    suspend fun importBackup(text: String) = withContext(Dispatchers.IO) {
+        sessionWriteMutex.withLock {
+            val dao = database.dao()
+            if (dao.activeSessionCount() > 0) throw BackupException(ACTIVE_WORKOUT_BLOCK)
+            val backup = decodeBackup(text)
+            // Once replacement begins, navigation must not interrupt the post-commit preferences write.
+            withContext(NonCancellable) {
+                try {
+                    database.withTransaction {
+                        if (dao.activeSessionCount() > 0) throw BackupException(ACTIVE_WORKOUT_BLOCK)
+                        dao.deleteAllSets()
+                        dao.deleteAllSessionExercises()
+                        dao.deleteAllSessions()
+                        dao.deleteAllTemplateExercises()
+                        dao.deleteAllTemplates()
+                        dao.deleteAllExercises()
+                        val inserted = listOf(
+                            dao.insertExercises(backup.exercises.map { it.toExercise() }),
+                            dao.insertTemplates(backup.templates.map { it.toTemplate() }),
+                            dao.insertTemplateExercises(backup.templateExercises.map { it.toTemplateExercise() }),
+                            dao.insertSessions(backup.sessions.map { it.toSession() }),
+                            dao.insertSessionExercises(backup.sessionExercises.map { it.toSessionExercise() }),
+                            dao.insertSets(backup.sets.map { it.toLoggedSet() }),
+                        )
+                        check(inserted.all { rows -> rows.none { it == -1L } }) { "A backup row could not be inserted." }
+                    }
+                } catch (e: BackupException) {
+                    throw e
+                } catch (e: Exception) {
+                    throw BackupException("Could not write the backup. Local data is unchanged. Try importing again.")
+                }
+                try {
+                    profileStore.save(backup.profile.toProfile())
+                    settingsStore.save(backup.settings.toSettings())
+                    settingsStore.markSeeded(SeedContent.VERSION)
+                    settingsStore.setRestEndsAt(null)
+                } catch (e: Exception) {
+                    throw BackupException(
+                        "Training data was imported, but profile and settings could not be saved. Import the same file again.",
+                    )
+                }
+            }
+        }
+    }
+
     suspend fun seedIfNeeded() {
         val current = settingsStore.settings.first().seedVersion
         if (current >= SeedContent.VERSION) return
-
         val now = System.currentTimeMillis()
         val exercises = SeedContent.exercises.map { seed ->
             Exercise(

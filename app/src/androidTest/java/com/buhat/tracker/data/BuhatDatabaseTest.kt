@@ -49,11 +49,12 @@ class BuhatDatabaseTest {
         db.close()
     }
 
-    private fun settingsStore(): SettingsStore {
+    private fun repository(): BuhatRepository {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val file = File(context.cacheDir, "buhat-seed-${UUID.randomUUID()}.preferences_pb")
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        return SettingsStore(PreferenceDataStoreFactory.create(scope = scope) { file })
+        val dataStore = PreferenceDataStoreFactory.create(scope = scope) { file }
+        return BuhatRepository(db, SettingsStore(dataStore), ProfileStore(dataStore))
     }
 
     @Test
@@ -133,7 +134,7 @@ class BuhatDatabaseTest {
 
     @Test
     fun seedingTwiceLeavesExactlyTheSeed() = runTest {
-        val repository = BuhatRepository(db, settingsStore())
+        val repository = repository()
 
         repository.seedIfNeeded()
         repository.seedIfNeeded()

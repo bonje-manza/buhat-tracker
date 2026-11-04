@@ -42,8 +42,8 @@ class ContentRepositoryTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val file = File(context.cacheDir, "buhat-content-${UUID.randomUUID()}.preferences_pb")
         storeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val settings = SettingsStore(PreferenceDataStoreFactory.create(scope = storeScope) { file })
-        repo = BuhatRepository(db, settings)
+        val dataStore = PreferenceDataStoreFactory.create(scope = storeScope) { file }
+        repo = BuhatRepository(db, SettingsStore(dataStore), ProfileStore(dataStore))
         repo.seedIfNeeded()
     }
 

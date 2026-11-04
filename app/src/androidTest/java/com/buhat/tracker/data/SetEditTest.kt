@@ -37,8 +37,8 @@ class SetEditTest {
             ApplicationProvider.getApplicationContext<android.content.Context>().cacheDir,
             "buhat-set-edit-${UUID.randomUUID()}.preferences_pb",
         )
-        val settings = SettingsStore(PreferenceDataStoreFactory.create(scope = storeScope) { file })
-        repo = BuhatRepository(db, settings)
+        val dataStore = PreferenceDataStoreFactory.create(scope = storeScope) { file }
+        repo = BuhatRepository(db, SettingsStore(dataStore), ProfileStore(dataStore))
         repo.seedIfNeeded()
     }
 

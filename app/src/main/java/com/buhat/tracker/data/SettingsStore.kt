@@ -1,6 +1,7 @@
 package com.buhat.tracker.data
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -35,31 +36,38 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         it[NOTIFICATION_PERMISSION_REQUESTED] ?: false
     }
 
-    val settings = dataStore.data.map { prefs ->
-        Settings(
-            theme = prefs[THEME]?.let { AppTheme.valueOf(it) } ?: AppTheme.DARK,
-            unit = prefs[UNIT]?.let { WeightUnit.valueOf(it) } ?: WeightUnit.KG,
-            previousSetSource = prefs[PREVIOUS_SET_SOURCE]?.let { PreviousSetSource.valueOf(it) }
-                ?: PreviousSetSource.ANY_WORKOUT,
-            restWarmupSeconds = prefs[REST_WARMUP] ?: 60,
-            restWorkingSeconds = prefs[REST_WORKING] ?: 120,
-            restFailureSeconds = prefs[REST_FAILURE] ?: 180,
-            restIncrementSeconds = prefs[REST_INCREMENT] ?: 15,
-            restEndsAt = prefs[REST_ENDS_AT],
-            seedVersion = prefs[SEED_VERSION] ?: 0,
-        )
-    }
+    val settings = dataStore.data.map { it.toSettings() }
 
     suspend fun save(settings: Settings) {
-        dataStore.edit { prefs ->
-            prefs[THEME] = settings.theme.name
-            prefs[UNIT] = settings.unit.name
-            prefs[PREVIOUS_SET_SOURCE] = settings.previousSetSource.name
-            prefs[REST_WARMUP] = settings.restWarmupSeconds
-            prefs[REST_WORKING] = settings.restWorkingSeconds
-            prefs[REST_FAILURE] = settings.restFailureSeconds
-            prefs[REST_INCREMENT] = settings.restIncrementSeconds
-        }
+        dataStore.edit { it.write(settings) }
+    }
+
+    /** Read-modify-write inside the DataStore edit so rapid changes cannot drop each other. */
+    suspend fun update(transform: (Settings) -> Settings) {
+        dataStore.edit { prefs -> prefs.write(transform(prefs.toSettings())) }
+    }
+
+    private fun Preferences.toSettings() = Settings(
+        theme = this[THEME]?.let { AppTheme.valueOf(it) } ?: AppTheme.DARK,
+        unit = this[UNIT]?.let { WeightUnit.valueOf(it) } ?: WeightUnit.KG,
+        previousSetSource = this[PREVIOUS_SET_SOURCE]?.let { PreviousSetSource.valueOf(it) }
+            ?: PreviousSetSource.ANY_WORKOUT,
+        restWarmupSeconds = this[REST_WARMUP] ?: 60,
+        restWorkingSeconds = this[REST_WORKING] ?: 120,
+        restFailureSeconds = this[REST_FAILURE] ?: 180,
+        restIncrementSeconds = this[REST_INCREMENT] ?: 15,
+        restEndsAt = this[REST_ENDS_AT],
+        seedVersion = this[SEED_VERSION] ?: 0,
+    )
+
+    private fun MutablePreferences.write(settings: Settings) {
+        this[THEME] = settings.theme.name
+        this[UNIT] = settings.unit.name
+        this[PREVIOUS_SET_SOURCE] = settings.previousSetSource.name
+        this[REST_WARMUP] = settings.restWarmupSeconds
+        this[REST_WORKING] = settings.restWorkingSeconds
+        this[REST_FAILURE] = settings.restFailureSeconds
+        this[REST_INCREMENT] = settings.restIncrementSeconds
     }
 
     /** Timer state is written on its own so a settings save cannot undo a running rest. */

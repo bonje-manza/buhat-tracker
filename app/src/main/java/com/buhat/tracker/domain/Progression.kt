@@ -46,7 +46,7 @@ fun sourceSetForPosition(
         ?: working.maxByOrNull { it.completedAt }
 }
 
-fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int): ProgressionTarget {
+fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int, unit: WeightUnit = WeightUnit.KG): ProgressionTarget {
     if (source == null || !source.setType.countsForProgression) {
         return ProgressionTarget(null, repMin, "First time. Set your working weight.")
     }
@@ -60,7 +60,7 @@ fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int): ProgressionT
         return ProgressionTarget(
             weightKg = source.weightKg + WEIGHT_INCREMENT_KG,
             reps = repMin,
-            message = "Top of range reached. Add 2.5 kg, restart at $repMin.",
+            message = "Top of range reached. Add ${formatWeight(WEIGHT_INCREMENT_KG, unit)}, restart at $repMin.",
         )
     }
 
@@ -68,7 +68,7 @@ fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int): ProgressionT
     return ProgressionTarget(
         weightKg = source.weightKg,
         reps = reps,
-        message = "Beat $reps reps at ${formatKg(source.weightKg)} kg.",
+        message = "Beat $reps reps at ${formatWeight(source.weightKg, unit)}.",
     )
 }
 

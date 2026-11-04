@@ -9,6 +9,7 @@ import com.buhat.tracker.data.ProfileStore
 import com.buhat.tracker.data.SettingsStore
 import com.buhat.tracker.data.local.BuhatDatabase
 import com.buhat.tracker.timer.RestTimer
+import com.buhat.tracker.ui.BackupController
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +20,7 @@ import kotlinx.coroutines.cancel
 class AppContainer(private val context: Context, private val inMemory: Boolean = false) {
 
     private val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     // A test container gets its own file: a closed DataStore keeps its file registered
     // briefly, and reusing the name would fail the next reset.
     private val dataStoreFile = if (inMemory) {
@@ -37,12 +39,14 @@ class AppContainer(private val context: Context, private val inMemory: Boolean =
     } else {
         Room.databaseBuilder(context, BuhatDatabase::class.java, "buhat.db").build()
     }
-    val repository = BuhatRepository(database, settingsStore)
+    val repository = BuhatRepository(database, settingsStore, profileStore)
     val restTimer = RestTimer(context, settingsStore)
+    val backupController = BackupController(repository, restTimer, appScope)
 
     fun close() {
         database.close()
         dataStoreScope.cancel()
+        appScope.cancel()
         if (inMemory) dataStoreFile.delete()
     }
 }

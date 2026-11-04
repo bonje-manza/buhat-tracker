@@ -1,0 +1,109 @@
+{
+    "formatVersion": 1,
+    "appVersion": "1.0.0",
+    "exportedAt": 1793694030308,
+    "profile": {
+        "name": "Avery Kamp",
+        "gender": "Female",
+        "age": 29,
+        "weightKg": 64.5,
+        "heightCm": 171
+    },
+    "settings": {
+        "theme": "LIGHT",
+        "unit": "LB",
+        "previousSetSource": "ANY_WORKOUT",
+        "restWarmupSeconds": 60,
+        "restWorkingSeconds": 120,
+        "restFailureSeconds": 180,
+        "restIncrementSeconds": 15
+    },
+    "exercises": [
+        {
+            "id": "066d2cee-ed3e-4f84-9ca5-996b3785634a",
+            "name": "Belt Squat",
+            "muscleGroup": "Quads",
+            "equipment": "Machine",
+            "isCustom": true,
+            "archivedAt": 1793694030246,
+            "createdAt": 1793694030009
+        }
+    ],
+    "templates": [
+        {
+            "id": "f7ef1617-6935-41f8-9065-91c61a7f70e3",
+            "name": "Belt Day",
+            "isPremade": false,
+            "createdAt": 1793694030023,
+            "updatedAt": 1793694030023,
+            "archivedAt": null
+        }
+    ],
+    "templateExercises": [
+        {
+            "id": "38e6fcee-bbce-4fd4-8b3a-3a7069a3fbb8",
+            "templateId": "f7ef1617-6935-41f8-9065-91c61a7f70e3",
+            "exerciseId": "066d2cee-ed3e-4f84-9ca5-996b3785634a",
+            "position": 1,
+            "workingSets": 3,
+            "repMin": 6,
+            "repMax": 10,
+            "targetRir": 2
+        }
+    ],
+    "sessions": [
+        {
+            "id": "21cb28e5-1bba-420c-b4c5-177c5b4e5a8f",
+            "templateIdSnapshot": "f7ef1617-6935-41f8-9065-91c61a7f70e3",
+            "templateNameSnapshot": "Belt Day",
+            "startedAt": 1793694030051,
+            "finishedAt": 1793694030218,
+            "status": "FINISHED"
+        }
+    ],
+    "sessionExercises": [
+        {
+            "id": "c1901333-97d0-4cbf-b3c8-39ca9a0a3f93",
+            "sessionId": "21cb28e5-1bba-420c-b4c5-177c5b4e5a8f",
+            "exerciseId": "066d2cee-ed3e-4f84-9ca5-996b3785634a",
+            "exerciseNameSnapshot": "Belt Squat",
+            "position": 1,
+            "workingSets": 3,
+            "repMin": 6,
+            "repMax": 10,
+            "targetRir": 2
+        }
+    ],
+    "sets": [
+        {
+            "id": "b727b2d9-5fd1-4bb2-a3f8-3817425b465e",
+            "sessionExerciseId": "c1901333-97d0-4cbf-b3c8-39ca9a0a3f93",
+            "setType": "WARMUP",
+            "workingIndex": null,
+            "weightKg": 40.0,
+            "reps": 10,
+            "rir": null,
+            "completedAt": 1793694030092
+        },
+        {
+            "id": "610846c4-61b8-4d99-a50a-ef619422e54b",
+            "sessionExerciseId": "c1901333-97d0-4cbf-b3c8-39ca9a0a3f93",
+            "setType": "WORKING",
+            "workingIndex": 1,
+            "weightKg": 80.0,
+            "reps": 10,
+            "rir": 2,
+            "completedAt": 1793694030146
+        },
+        {
+            "id": "3f51f737-2e28-4e2f-821a-d0a5a690aeb5",
+            "sessionExerciseId": "c1901333-97d0-4cbf-b3c8-39ca9a0a3f93",
+            "setType": "FAILURE",
+            "workingIndex": 2,
+            "weightKg": 80.0,
+            "reps": 8,
+            "rir": 0,
+            "completedAt": 1793694030186
+        }
+    ]
+}

@@ -43,8 +43,9 @@ class RestTimerRepositoryTest {
             ApplicationProvider.getApplicationContext<android.content.Context>().cacheDir,
             "buhat-rest-${UUID.randomUUID()}.preferences_pb",
         )
-        settings = SettingsStore(PreferenceDataStoreFactory.create(scope = storeScope) { file })
-        repo = BuhatRepository(db, settings)
+        val dataStore = PreferenceDataStoreFactory.create(scope = storeScope) { file }
+        settings = SettingsStore(dataStore)
+        repo = BuhatRepository(db, settings, ProfileStore(dataStore))
         repo.seedIfNeeded()
         // Hand-set defaults so each type is distinguishable in the assertions.
         settings.save(Settings(restWarmupSeconds = 45, restWorkingSeconds = 90, restFailureSeconds = 150))
@@ -159,7 +160,7 @@ class RestTimerRepositoryTest {
         logFirstExercise(SetType.WORKING)
         val saved = restEndsAt()
 
-        val reopened = BuhatRepository(db, settings)
+        val reopened = BuhatRepository(db, settings, repo.profileStore)
 
         assertEquals(saved, reopened.settingsStore.settings.first().restEndsAt)
     }
