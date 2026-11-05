@@ -55,8 +55,9 @@ Automated checks below passed on commit `3d33a28`. Physical and owner-confirmed 
 
 - Signing material created on 2026-11-04 outside the repository. Backup confirmations pending.
 - Approved signer SHA-256: `0AE9F79BB9726BABB4EF39C926483721CC2AE49ECA633CABFE5F3574B9F51BAC`.
-- 2026-11-05 E2E runner: unit 74 tests / 0 failed, device 118 tests / 0 failed, INTERNET permission absent, `RESULT: PASS`.
+- 2026-11-05 E2E runner: unit 74 tests / 0 failed, device 119 tests / 0 failed, INTERNET permission absent, `RESULT: PASS`.
+- 2026-11-05 Rest completion alert: when notifications cannot be posted, the app now plays the alert sound and vibrates directly from the alarm path instead of staying silent. Adds the `VIBRATE` permission. Covered by `timer/RestTimerTest#completionWithoutNotificationPermissionPlaysADirectAlert` (red before the branch, green after).
 - 2026-11-05 `:app:lintDebug :app:lintRelease :app:test` (JDK 21): `BUILD SUCCESSFUL`.
 - 2026-11-05 `scripts/verify-release.ps1`: all nine signing-failure cases pass (including `:app:bundleRelease`), signer matches the pinned approved fingerprint, R8 and resource shrinking ran, manifest checks pass, `RESULT: PASS`. Signing the same code with a disposable different key fails with `APK signer does not match the approved release key`.
-- Signed APK SHA-256: `C817C3DD388FB6EC56CB3403D69CAEDF1AA74A7F122A80CF76FD37D5D836FD56`.
+- Signed APK SHA-256: `A3F926BA443BB028E25F5A4EE07874DAFB7572C4942FC19B25A18BAC7043474B`.
 - 2026-11-05 signed release install on SM-S711W: launches offline in airplane mode; fresh seed shows six templates with set counts Push Day A 9, Pull Day A 16, Leg Day 17, Push Day B 13, Pull Day B 12, Leg Day B 16.

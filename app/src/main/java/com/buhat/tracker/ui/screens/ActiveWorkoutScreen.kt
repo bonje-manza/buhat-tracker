@@ -620,11 +620,11 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     if (permissionDenied) {
         AlertDialog(
             onDismissRequest = { permissionDenied = false },
-            title = { Text("Background alerts off") },
+            title = { Text("Notifications are off") },
             text = {
                 Text(
-                    "Allow notifications to hear the rest timer with the screen off. " +
-                        "The in-app countdown still works.",
+                    "Allow notifications to see the rest countdown on your lock screen. " +
+                        "The timer still sounds and vibrates without them.",
                 )
             },
             confirmButton = {

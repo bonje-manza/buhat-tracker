@@ -9,7 +9,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.RingtoneManager
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import android.net.Uri
 import com.buhat.tracker.MainActivity
@@ -100,7 +104,28 @@ fun cancelOngoingRestNotification(context: Context) {
     notificationManager(context).cancel(ONGOING_NOTIFICATION_ID)
 }
 
-class RestTimer(context: Context, private val settingsStore: SettingsStore) {
+/** Sound and vibration when notifications cannot carry the rest alert. */
+fun playDirectAlert(context: Context) {
+    runCatching {
+        RingtoneManager.getRingtone(context, Settings.System.DEFAULT_NOTIFICATION_URI)?.play()
+    }
+    runCatching {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
+        vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 400, 200, 400), -1))
+    }
+}
+
+class RestTimer(
+    context: Context,
+    private val settingsStore: SettingsStore,
+    private val canNotify: (Context) -> Boolean = ::canPostNotifications,
+    private val directAlert: (Context) -> Unit = ::playDirectAlert,
+) {
 
     private val appContext = context.applicationContext
     private val notificationsMutex = Mutex()
@@ -134,7 +159,7 @@ class RestTimer(context: Context, private val settingsStore: SettingsStore) {
     suspend fun completeAlarm(endsAt: Long, repository: BuhatRepository): Boolean =
         notificationsMutex.withLock {
             if (!repository.completeRest(endsAt)) return@withLock false
-            showRestCompleteNotification(appContext)
+            if (canNotify(appContext)) showRestCompleteNotification(appContext) else directAlert(appContext)
             cancelOngoingRestNotification(appContext)
             true
         }

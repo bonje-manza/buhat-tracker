@@ -77,6 +77,23 @@ class RestTimerTest {
     }
 
     @Test
+    fun completionWithoutNotificationPermissionPlaysADirectAlert() = runBlocking {
+        var alerted = false
+        val timer = RestTimer(
+            app,
+            app.container.settingsStore,
+            canNotify = { false },
+            directAlert = { alerted = true },
+        )
+        val endsAt = System.currentTimeMillis() + 1_000
+        app.container.settingsStore.setRestEndsAt(endsAt)
+
+        assertTrue(timer.completeAlarm(endsAt, app.container.repository))
+        assertTrue("expected a sound/vibration alert when notifications are off", alerted)
+        assertNull(active(COMPLETE_NOTIFICATION_ID))
+    }
+
+    @Test
     fun aStaleCompletionCannotRemoveANewerNotification() = runBlocking {
         val staleEndsAt = System.currentTimeMillis() + 30_000
         val currentEndsAt = staleEndsAt + 30_000
