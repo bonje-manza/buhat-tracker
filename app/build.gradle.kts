@@ -1,9 +1,50 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
+}
+
+val releaseCredentials = runCatching {
+    val path = providers.gradleProperty("keystoreProperties").orNull
+        ?: throw GradleException("Release signing requires an external keystore.properties file")
+    fun externalFile(path: String): File {
+        val file = File(path)
+        if (!file.isAbsolute) throw GradleException("Release signing files must use absolute paths")
+        val resolved = if (file.exists()) file.toPath().toRealPath() else file.canonicalFile.toPath()
+        if (resolved.startsWith(rootDir.toPath().toRealPath())) {
+            throw GradleException("Release signing files must be outside the repository")
+        }
+        return resolved.toFile()
+    }
+    val propertiesFile = externalFile(path)
+    if (!propertiesFile.isFile) {
+        throw GradleException("Release signing requires an external keystore.properties file")
+    }
+    val properties = Properties()
+    try {
+        propertiesFile.inputStream().use { properties.load(it) }
+    } catch (_: Exception) {
+        throw GradleException("Cannot read release signing properties")
+    }
+    if (listOf("storeFile", "storePassword", "keyAlias", "keyPassword").any { properties.getProperty(it).isNullOrBlank() }) {
+        throw GradleException("Release signing requires storeFile, storePassword, keyAlias, keyPassword")
+    }
+    val key = externalFile(properties.getProperty("storeFile"))
+    if (!key.isFile) throw GradleException("Release keystore does not exist")
+    properties.setProperty("storeFile", key.path)
+    properties
+}
+
+val validateReleaseCredentials by tasks.registering {
+    doLast { releaseCredentials.getOrThrow() }
+}
+tasks.matching { it.name == "packageRelease" }.configureEach {
+    dependsOn(validateReleaseCredentials)
 }
 
 android {
@@ -29,6 +70,26 @@ android {
         buildConfig = true
     }
     sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
+
+    signingConfigs {
+        create("release") {
+            releaseCredentials.getOrNull()?.let {
+                storeFile = File(it.getProperty("storeFile"))
+                storePassword = it.getProperty("storePassword")
+                keyAlias = it.getProperty("keyAlias")
+                keyPassword = it.getProperty("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+        }
+    }
 }
 
 kotlin {
