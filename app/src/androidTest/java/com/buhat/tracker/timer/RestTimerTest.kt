@@ -74,6 +74,7 @@ class RestTimerTest {
         val channel = notifications.getNotificationChannel(COMPLETE_CHANNEL_ID)
         assertNotNull(channel?.sound)
         assertTrue(channel!!.shouldVibrate())
+        assertNotNull("completion channel needs an explicit vibration pattern", channel.vibrationPattern)
     }
 
     @Test

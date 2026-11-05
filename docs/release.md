@@ -59,5 +59,6 @@ Automated checks below passed on commit `3d33a28`. Physical and owner-confirmed 
 - 2026-11-05 Rest completion alert: when notifications cannot be posted, the app now plays the alert sound and vibrates directly from the alarm path instead of staying silent. Adds the `VIBRATE` permission. Covered by `timer/RestTimerTest#completionWithoutNotificationPermissionPlaysADirectAlert` (red before the branch, green after).
 - 2026-11-05 `:app:lintDebug :app:lintRelease :app:test` (JDK 21): `BUILD SUCCESSFUL`.
 - 2026-11-05 `scripts/verify-release.ps1`: all nine signing-failure cases pass (including `:app:bundleRelease`), signer matches the pinned approved fingerprint, R8 and resource shrinking ran, manifest checks pass, `RESULT: PASS`. Signing the same code with a disposable different key fails with `APK signer does not match the approved release key`.
-- Signed APK SHA-256: `A3F926BA443BB028E25F5A4EE07874DAFB7572C4942FC19B25A18BAC7043474B`.
+- Signed APK SHA-256: `E894BEB38A6982CECDFBAD36838BB0DF8CBCC791D4AB0491DB238E5AA5050E37`.
+- 2026-11-05 Rest completion vibration: the completion channel now sets an explicit vibration pattern and was bumped to `rest_complete_v2` (channels are immutable), so the alert vibrates with a defined pattern instead of relying on the OEM default. The direct path already vibrated.
 - 2026-11-05 signed release install on SM-S711W: launches offline in airplane mode; fresh seed shows six templates with set counts Push Day A 9, Pull Day A 16, Leg Day 17, Push Day B 13, Pull Day B 12, Leg Day B 16.

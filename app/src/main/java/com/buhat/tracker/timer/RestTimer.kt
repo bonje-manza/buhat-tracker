@@ -26,7 +26,8 @@ import kotlinx.coroutines.sync.withLock
 const val ONGOING_NOTIFICATION_ID = 1001
 const val COMPLETE_NOTIFICATION_ID = 1002
 const val ONGOING_CHANNEL_ID = "rest_timer"
-const val COMPLETE_CHANNEL_ID = "rest_complete_v1"
+// v2 adds an explicit vibration pattern; channels are immutable once created.
+const val COMPLETE_CHANNEL_ID = "rest_complete_v2"
 internal const val REST_ALARM_ACTION = "com.buhat.tracker.REST_ALARM"
 internal const val REST_ENDS_AT_EXTRA = "rest_ends_at"
 
@@ -58,6 +59,7 @@ fun ensureRestChannels(context: Context) {
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             enableVibration(true)
+            vibrationPattern = longArrayOf(0, 400, 200, 400)
             setSound(Settings.System.DEFAULT_NOTIFICATION_URI, null)
         },
     )
