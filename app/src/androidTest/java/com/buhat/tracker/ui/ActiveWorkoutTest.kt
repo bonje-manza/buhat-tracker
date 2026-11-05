@@ -1,6 +1,8 @@
 package com.buhat.tracker.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -9,6 +11,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.buhat.tracker.BuhatApplication
@@ -32,7 +36,10 @@ class ActiveWorkoutTest {
     val reset = TestRule { base: Statement, _: Description ->
         object : Statement() {
             override fun evaluate() {
-                ApplicationProvider.getApplicationContext<BuhatApplication>().resetForTest()
+                val app = ApplicationProvider.getApplicationContext<BuhatApplication>()
+                app.resetForTest()
+                // Timer/permission behavior has its own suite; keep logging tests out of the system prompt.
+                runBlocking { app.container.settingsStore.update { it.copy(restWorkingSeconds = 0) } }
                 base.evaluate()
             }
         }
@@ -71,6 +78,31 @@ class ActiveWorkoutTest {
     }
 
     @Test
+    fun idleRestCardExplainsAutomaticStartWithoutSkip() {
+        startPushDayA()
+        compose.onNodeWithText("Ready for next set").assertIsDisplayed()
+        compose.onNodeWithText("Starts automatically after each set").assertIsDisplayed()
+        compose.onNodeWithTag("skip-rest").assertDoesNotExist()
+    }
+
+    @Test
+    fun numericInputsHaveNamed48dpTouchTargetsIncludingTheEditor() {
+        seedPreviousBenchSession()
+        startPushDayA()
+        awaitTag("weight-input")
+        for ((tag, label) in listOf("weight-input" to "Weight (kg)", "reps-input" to "Reps")) {
+            compose.onNodeWithTag(tag).performScrollTo().assertHeightIsAtLeast(48.dp)
+                .assertContentDescriptionEquals(label)
+        }
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+        compose.onNodeWithTag("set-row-1").performScrollTo().performClick()
+        for ((tag, label) in listOf("edit-weight-input" to "Weight (kg)", "edit-reps-input" to "Reps")) {
+            compose.onNodeWithTag(tag).assertHeightIsAtLeast(48.dp).assertContentDescriptionEquals(label)
+        }
+    }
+
+    @Test
     fun logsAWorkingSetAndShowsTheNextPositionTarget() {
         seedPreviousBenchSession()
         startPushDayA()
@@ -84,7 +116,7 @@ class ActiveWorkoutTest {
 
         compose.onNodeWithTag("weight-input").performTextReplacement("82.5")
         compose.onNodeWithTag("reps-input").performTextReplacement("7")
-        compose.onNodeWithTag("log-set").performClick()
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
 
         awaitText("82.5 kg × 7")
         compose.onNodeWithText("RIR 2").assertExists()

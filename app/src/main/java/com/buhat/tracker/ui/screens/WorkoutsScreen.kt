@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -16,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -76,7 +79,7 @@ fun WorkoutsScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .testTag("screen-Workouts")
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 16.dp),
     ) {
         Spacer(Modifier.height(24.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -89,14 +92,21 @@ fun WorkoutsScreen(
                 Text(
                     text = "Workouts",
                     color = MaterialTheme.colorScheme.onBackground,
-                    style = MaterialTheme.typography.headlineLarge,
+                    style = MaterialTheme.typography.headlineMedium,
                 )
             }
-            TextButton(onClick = onOpenLibrary, modifier = Modifier.testTag("open-library")) {
-                Text("Library")
+            var menuOpen by remember { mutableStateOf(false) }
+            Box {
+                TextButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("workouts-menu")) { Text("⋯") }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text("Exercise library") }, modifier = Modifier.testTag("open-library"),
+                        onClick = { menuOpen = false; onOpenLibrary() })
+                }
             }
             Spacer(Modifier.width(8.dp))
-            Button(onClick = onNewTemplate, modifier = Modifier.testTag("new-template")) {
+            FilledTonalButton(onClick = onNewTemplate, modifier = Modifier.testTag("new-template"),
+                colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface)) {
                 Text("+ New")
             }
         }
@@ -292,6 +302,7 @@ private fun TemplateCardItem(
             onClick = onStart,
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .testTag("start-workout-${card.template.name}"),
         ) {
             Text("Start workout")
@@ -304,7 +315,7 @@ private fun StatTile(label: String, value: Int, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .padding(12.dp),
     ) {
         Text(

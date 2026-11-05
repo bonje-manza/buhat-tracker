@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
@@ -51,7 +52,7 @@ fun BuhatCard(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
@@ -117,7 +118,7 @@ fun SetTypeBadge(type: SetType, modifier: Modifier = Modifier) {
     val (background, content) = when (type) {
         SetType.WARMUP -> scheme.tertiary to scheme.onTertiary
         SetType.WORKING -> scheme.secondary to scheme.onSecondary
-        SetType.FAILURE -> scheme.error to scheme.background
+        SetType.FAILURE -> scheme.error to scheme.onError
     }
     // Set type is always text, never color alone.
     Badge(label = type.label, color = background, contentColor = content, modifier = modifier)
@@ -129,13 +130,15 @@ fun BuhatSegmentedControl(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    selectedColor: Color = MaterialTheme.colorScheme.onSurface,
+    selectedContentColor: Color = MaterialTheme.colorScheme.background,
 ) {
     val scheme = MaterialTheme.colorScheme
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(50))
-            .background(scheme.surfaceVariant)
+            .background(scheme.surfaceContainerLow)
             .padding(4.dp)
             .selectableGroup(),
     ) {
@@ -146,20 +149,22 @@ fun BuhatSegmentedControl(
                     .weight(1f)
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(if (selected) scheme.onSurface else Color.Transparent)
+                    .background(if (selected) selectedColor else Color.Transparent)
                     .selectable(
                         selected = selected,
                         role = androidx.compose.ui.semantics.Role.RadioButton,
                         onClick = { onSelect(index) },
                     )
                     .testTag("segmented-$option")
+                    .padding(horizontal = 6.dp, vertical = 8.dp)
                     .align(Alignment.CenterVertically),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = option,
-                    color = if (selected) scheme.background else scheme.onSurfaceVariant,
+                    color = if (selected) selectedContentColor else scheme.onSurfaceVariant,
                     style = MaterialTheme.typography.titleSmall,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -251,18 +256,29 @@ fun BuhatLineChart(
                 androidx.compose.ui.geometry.Offset(x, y)
             }
             if (points.size == 1) {
-                drawCircle(color = scheme.secondary, center = points.first(), radius = 4.dp.toPx())
+                drawCircle(color = scheme.primary, center = points.first(), radius = 4.dp.toPx())
                 return@Canvas
+            }
+            val line = Path().apply {
+                points.forEachIndexed { index, point ->
+                    if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                }
             }
             drawPath(
                 path = Path().apply {
-                    points.forEachIndexed { index, point ->
-                        if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
-                    }
+                    addPath(line)
+                    lineTo(points.last().x, size.height)
+                    lineTo(points.first().x, size.height)
+                    close()
                 },
+                color = scheme.secondary.copy(alpha = 0.18f),
+            )
+            drawPath(
+                path = line,
                 color = scheme.secondary,
                 style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
             )
+            drawCircle(color = scheme.primary, center = points.last(), radius = 4.dp.toPx())
         }
     }
 }
@@ -305,7 +321,7 @@ fun BuhatChoiceChip(
             .clip(RoundedCornerShape(50))
             .background(
                 if (selected) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.surfaceVariant,
+                else MaterialTheme.colorScheme.surfaceContainerLow,
             )
             .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
             .padding(horizontal = 14.dp),
@@ -333,7 +349,8 @@ fun BuhatScreen(
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(horizontal = 24.dp),
+            .imePadding()
+            .padding(horizontal = 16.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -344,6 +361,7 @@ fun BuhatScreen(
                     .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                     .clip(CircleShape)
                     .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onBack)
+                    .semantics { contentDescription = "Back" }
                     .testTag("back"),
                 contentAlignment = Alignment.Center,
             ) {

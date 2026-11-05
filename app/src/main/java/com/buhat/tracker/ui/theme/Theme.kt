@@ -19,18 +19,20 @@ private val BuhatDarkColors = darkColorScheme(
     surface = BuhatSurface,
     onSurface = BuhatOnSurface,
     surfaceVariant = BuhatSurfaceVariant,
+    surfaceContainerLow = Color(0xFF1C1C1C),
     onSurfaceVariant = BuhatOnSurfaceVariant,
     error = BuhatRed,
+    onError = BuhatBackground,
 )
 
 private val BuhatDarkOnSecondary = Color(0xFF221C03)
 private val BuhatDarkOnTertiary = Color(0xFF33260B)
 
 private val BuhatLightColors = lightColorScheme(
-    primary = BuhatOrange,
-    onPrimary = BuhatOnLightSurface,
-    secondary = BuhatLime,
-    onSecondary = BuhatDarkOnSecondary,
+    primary = Color(0xFFA43F16),
+    onPrimary = Color.White,
+    secondary = Color(0xFF617016),
+    onSecondary = Color.White,
     tertiary = BuhatAmber,
     onTertiary = BuhatDarkOnTertiary,
     background = BuhatLightBackground,
@@ -38,8 +40,10 @@ private val BuhatLightColors = lightColorScheme(
     surface = BuhatLightSurface,
     onSurface = BuhatOnLightSurface,
     surfaceVariant = BuhatLightSurfaceVariant,
+    surfaceContainerLow = BuhatLightSurfaceVariant,
     onSurfaceVariant = BuhatOnLightSurfaceVariant,
-    error = BuhatRed,
+    error = Color(0xFFB3261E),
+    onError = Color.White,
 )
 
 // Default is Dark (roadmap); Settings wires the stored theme in a later phase.

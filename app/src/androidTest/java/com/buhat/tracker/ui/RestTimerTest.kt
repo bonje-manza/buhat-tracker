@@ -71,7 +71,7 @@ class RestTimerTest {
     private fun logWorkingSet() {
         compose.onNodeWithTag("weight-input").performTextReplacement("80")
         compose.onNodeWithTag("reps-input").performTextReplacement("8")
-        compose.onNodeWithTag("log-set").performClick()
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
     }
 
     private fun awaitTag(tag: String) {
@@ -121,6 +121,7 @@ class RestTimerTest {
         logWorkingSet()
 
         awaitTag("rest-card")
+        compose.onNodeWithTag("rest-countdown").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("rest-countdown").assertIsDisplayed()
 
         compose.onNodeWithTag("skip-rest").performClick()
@@ -141,7 +142,7 @@ class RestTimerTest {
         try {
             compose.onNodeWithTag("weight-input").performTextReplacement("80")
             compose.onNodeWithTag("reps-input").performTextReplacement("8")
-            compose.onNodeWithTag("log-set").performClick()
+            compose.onNodeWithTag("log-set").performScrollTo().performClick()
             compose.onNodeWithTag("tab-Workouts").performClick()
         } finally {
             releaseDatabaseWrites(databaseBlock)
@@ -235,7 +236,7 @@ class RestTimerTest {
         compose.waitForIdle()
 
         awaitTag("rest-card")
-        compose.onNodeWithTag("rest-countdown").assertIsDisplayed()
+        compose.onNodeWithTag("rest-countdown").performScrollTo().assertIsDisplayed()
         assertEquals(endsAt, runBlocking { container.settingsStore.settings.first().restEndsAt })
     }
 
@@ -253,7 +254,7 @@ class RestTimerTest {
             notifications.activeNotifications.any { it.id == com.buhat.tracker.timer.ONGOING_NOTIFICATION_ID }
         }
 
-        compose.onNodeWithTag("active-menu").performClick()
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
         compose.onNodeWithText("Finish workout").performClick()
 
         awaitGone("rest-card")
@@ -280,7 +281,7 @@ class RestTimerTest {
             notifications.activeNotifications.any { it.id == com.buhat.tracker.timer.ONGOING_NOTIFICATION_ID }
         }
 
-        compose.onNodeWithTag("active-menu").performClick()
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
         compose.onNodeWithText("Discard workout").performClick()
         compose.onNodeWithTag("confirm-discard").performClick()
 

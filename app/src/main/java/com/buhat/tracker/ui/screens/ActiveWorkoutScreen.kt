@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
@@ -42,8 +43,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -101,7 +105,8 @@ fun ActiveWorkoutScreen(repository: BuhatRepository, restTimer: RestTimer, onSta
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .testTag("screen-Active")
-            .padding(horizontal = 24.dp),
+            .imePadding()
+            .padding(horizontal = 16.dp),
     ) {
         Spacer(Modifier.height(24.dp))
         val current = session
@@ -134,6 +139,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     val settings = settingsResult ?: Settings()
     val restEndsAt = settingsResult?.restEndsAt
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     val sets by remember(selected?.id) {
         selected?.let { repository.loggedSets(it.id) } ?: flowOf(emptyList())
@@ -292,6 +298,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             error = "Enter reps."
             return
         }
+        focusManager.clearFocus()
         scope.launch {
             try {
                 withContext(NonCancellable) {
@@ -317,7 +324,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             Text(
                 text = session.templateNameSnapshot,
                 color = MaterialTheme.colorScheme.onBackground,
-                style = MaterialTheme.typography.headlineLarge,
+                style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.testTag("active-template"),
             )
         }
@@ -426,9 +433,14 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
+    } else {
+        BuhatCard(Modifier.testTag("rest-idle")) {
+            Text("Ready for next set", style = MaterialTheme.typography.titleMedium)
+            Text("Starts automatically after each set", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium)
+        }
     }
-
+    Spacer(Modifier.height(16.dp))
     val exercise = selected
     val nextTargetValue = target
     if (exercise != null && nextTargetValue != null) {
@@ -674,7 +686,7 @@ private fun SetEditorDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit set") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 SetFields(
                     typeIndex = typeIndex,
                     onTypeIndexChange = { typeIndex = it },
@@ -752,6 +764,8 @@ private fun SetFields(
         options = SET_TYPE_LABELS,
         selectedIndex = typeIndex,
         onSelect = onTypeIndexChange,
+        selectedColor = MaterialTheme.colorScheme.secondary,
+        selectedContentColor = MaterialTheme.colorScheme.onSecondary,
     )
     Spacer(Modifier.height(12.dp))
     NumberField(
@@ -798,26 +812,24 @@ private fun NumberField(
     tag: String,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
-        )
+        Column(Modifier.weight(1f)) {
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                textStyle = MaterialTheme.typography.headlineLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontFeatureSettings = "tnum",
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .semantics { contentDescription = label }.testTag(tag),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
         StepButton("−", "$tag-minus") { onStep(-1) }
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            textStyle = MaterialTheme.typography.titleLarge.copy(
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            ),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
-            modifier = Modifier
-                .width(80.dp)
-                .testTag(tag),
-        )
+        Spacer(Modifier.width(12.dp))
         StepButton("+", "$tag-plus") { onStep(1) }
     }
 }

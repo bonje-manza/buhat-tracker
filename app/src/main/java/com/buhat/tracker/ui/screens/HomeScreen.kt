@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -83,7 +85,7 @@ fun HomeScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .testTag("screen-Home")
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 16.dp),
     ) {
         Spacer(Modifier.height(24.dp))
         if (error) {
@@ -133,9 +135,13 @@ fun HomeScreen(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-                TextButton(
+                FilledTonalButton(
                     onClick = onOpenSettings,
                     modifier = Modifier.testTag("settings-button"),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
                 ) {
                     Text("Settings")
                 }
@@ -211,7 +217,7 @@ private fun ProfileTile(label: String, value: String, modifier: Modifier = Modif
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .padding(12.dp),
     ) {
         Text(

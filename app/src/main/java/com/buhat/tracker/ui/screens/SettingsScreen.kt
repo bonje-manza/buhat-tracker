@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -318,17 +320,19 @@ private fun RestRow(
     max: Int = REST_SECONDS_MAX,
     format: (Double) -> String = { formatRestSeconds(it.toInt()) },
 ) {
-    Column(Modifier.padding(top = 12.dp)) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = hint,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = hint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         BuhatStepper(
             value = seconds.toDouble(),
             onValueChange = { onSecondsChange(it.toInt()) },
@@ -337,6 +341,7 @@ private fun RestRow(
             max = max.toDouble(),
             format = format,
             tagPrefix = tag,
+            modifier = Modifier.weight(1.5f),
         )
     }
 }

@@ -175,8 +175,8 @@ private fun BuhatBottomBar(selected: BuhatTab, onSelect: (BuhatTab) -> Unit) {
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         BuhatTab.entries.forEach { tab ->
             val isSelected = tab == selected
@@ -187,7 +187,7 @@ private fun BuhatBottomBar(selected: BuhatTab, onSelect: (BuhatTab) -> Unit) {
                     .clip(CircleShape)
                     .background(
                         if (isSelected) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.surfaceVariant,
+                        else MaterialTheme.colorScheme.surface,
                     )
                     .selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(tab) })
                     .testTag("tab-${tab.name}"),
@@ -199,7 +199,7 @@ private fun BuhatBottomBar(selected: BuhatTab, onSelect: (BuhatTab) -> Unit) {
                     else MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleSmall,
                     textAlign = TextAlign.Center,
-                    maxLines = 1,
+                    modifier = Modifier.padding(vertical = 8.dp),
                 )
             }
         }

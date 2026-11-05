@@ -132,12 +132,12 @@ fun ProgressScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("screen-Progress"),
-        contentPadding = PaddingValues(24.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             Text("Strength trends", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-            Text("Progress", style = MaterialTheme.typography.headlineLarge)
+            Text("Progress", style = MaterialTheme.typography.headlineMedium)
         }
         if (loadError) {
             item {
@@ -157,7 +157,9 @@ fun ProgressScreen(
                 BuhatCard {
                     Text("Estimated 1RM", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     StrengthTrend(e1rmTrend(history, exerciseId, rangeDays, now), selected?.second.orEmpty(), ranges[rangeIndex], unit, "progress") {
-                        BuhatSegmentedControl(ranges, rangeIndex, onSelectRange)
+                        BuhatSegmentedControl(ranges, rangeIndex, onSelectRange,
+                            selectedColor = MaterialTheme.colorScheme.secondary,
+                            selectedContentColor = MaterialTheme.colorScheme.onSecondary)
                     }
                 }
             }
@@ -306,9 +308,12 @@ internal fun StrengthTrend(
     val change = if (first != null && last != null) last.e1rm - first.e1rm else 0.0
     val changeText = "${if (change > 0) "+" else ""}${analyticsWeight(change, unit)} (${signedPercent(if (first != null) change / first.e1rm * 100 else 0.0)})"
     if (last != null) {
-        Text(analyticsWeight(last.e1rm, unit), style = MaterialTheme.typography.headlineLarge, modifier = Modifier.testTag("$tagPrefix-trend-latest"))
-        Text(changeText, color = changeColor(change),
-            modifier = Modifier.testTag("$tagPrefix-trend-change"))
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(analyticsWeight(last.e1rm, unit), style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.weight(1f).testTag("$tagPrefix-trend-latest"))
+            Text(changeText, color = changeColor(change), textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                modifier = Modifier.weight(1f).testTag("$tagPrefix-trend-change"))
+        }
     }
     Spacer(Modifier.height(12.dp))
     controls()
@@ -331,7 +336,7 @@ internal fun StrengthTrend(
 
 @Composable
 internal fun StatTile(label: String, value: String, tag: String, modifier: Modifier, stat: WindowStat? = null) {
-    Column(modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp)) {
+    Column(modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).padding(12.dp)) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("$tag-value"))
         if (stat != null) {
