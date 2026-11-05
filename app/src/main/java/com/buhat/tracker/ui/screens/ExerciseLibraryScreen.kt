@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.SeedContent
@@ -137,7 +139,8 @@ fun ExerciseLibraryScreen(
                         Box {
                             TextButton(
                                 onClick = { openMenuId = exercise.id },
-                                modifier = Modifier.testTag("exercise-menu-${exercise.name}"),
+                                modifier = Modifier.testTag("exercise-menu-${exercise.name}")
+                                    .semantics { contentDescription = "Exercise options" },
                             ) {
                                 Text("⋯")
                             }

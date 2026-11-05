@@ -7,7 +7,17 @@ $repo = Split-Path $PSScriptRoot -Parent
 $gradlew = Join-Path $repo 'gradlew.bat'
 $sdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
 $tools = Join-Path $sdk 'build-tools\35.0.0'
-$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot'
+function Use-Jdk21 {
+    $current = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin\java.exe' } else { (Get-Command java -ErrorAction SilentlyContinue).Source }
+    if ($current -and (Test-Path $current)) {
+        $version = (& $current -version 2>&1 | Select-Object -First 1) | Out-String
+        if ($version -match '"21\.') { return }
+    }
+    $candidates = @(Get-ChildItem 'C:\Program Files\Eclipse Adoptium' -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending)
+    if ($candidates.Count -eq 0) { throw 'JDK 21 not found. Install Temurin 21, then rerun.' }
+    $env:JAVA_HOME = $candidates[0].FullName
+}
+Use-Jdk21
 $evidence = Join-Path $repo 'app\build\release-check'
 New-Item -ItemType Directory -Force $evidence | Out-Null
 $temporary = Join-Path $env:LOCALAPPDATA ("Temp\opencode\buhat-signing-" + [guid]::NewGuid())
@@ -45,6 +55,7 @@ try {
     Reject-Signing 'key-inside-repo' $testProperties 'Release signing files must be outside the repository'
 
     Reject-Signing 'aggregate-without-key' (Join-Path $temporary 'missing.properties') 'Release signing requires an external keystore.properties file' ':app:assemble'
+    Reject-Signing 'bundle-without-key' (Join-Path $temporary 'missing.properties') 'Release signing requires an external keystore.properties file' ':app:bundleRelease'
 
     $testKey = Join-Path $temporary 'test.jks'
     & (Join-Path $env:JAVA_HOME 'bin\keytool.exe') -genkeypair -keystore $testKey -storetype PKCS12 -alias test -keyalg RSA -keysize 2048 -validity 1 -dname 'CN=Buhat signing test' -storepass test-password -keypass test-password *> (Join-Path $evidence 'test-key.log')
@@ -56,12 +67,9 @@ try {
     Require ($LASTEXITCODE -eq 0) 'Debug builds must work without release credentials'
     Write-Output 'PASS: debug without release credentials'
 
-    # Use Java's properties parser in Gradle. The verifier never reads passwords.
-    $report = & $gradlew :app:signingReport "-PkeystoreProperties=$SigningProperties" --console=plain 2>&1
-    Require ($LASTEXITCODE -eq 0) 'Could not read the approved signing certificate'
-    $certificate = [regex]::Match(($report | Out-String), '(?s)Variant: release\r?\n.*?SHA-256: ([A-Fa-f0-9:]+)')
-    Require $certificate.Success 'No release certificate in signingReport'
-    $expectedSigner = $certificate.Groups[1].Value.Replace(':', '').ToLowerInvariant()
+    # Pinned approved release certificate (see docs/release.md). A fixed value catches a
+    # wrong or stale keystore; a value derived from the same properties file cannot.
+    $approvedSigner = '0ae9f79bb9726babb4ef39c926483721cc2ae49eca633cabfe5f3574b9f51bac'
 
     & $gradlew :app:assembleRelease "-PkeystoreProperties=$SigningProperties" --rerun-tasks --console=plain *> (Join-Path $evidence 'signed-build.log')
     Require ($LASTEXITCODE -eq 0) 'Signed release build failed. See app/build/release-check/signed-build.log'
@@ -73,7 +81,7 @@ try {
 
     $signature = & (Join-Path $tools 'apksigner.bat') verify --verbose --print-certs $apk 2>&1
     Require ($LASTEXITCODE -eq 0) 'APK signature verification failed'
-    Require (($signature | Out-String).ToLowerInvariant().Contains($expectedSigner)) 'APK was signed with a different key'
+    Require (($signature | Out-String).ToLowerInvariant().Contains($approvedSigner)) 'APK signer does not match the approved release key'
     $signature | Write-Output
 
     $badging = & (Join-Path $tools 'aapt.exe') dump badging $apk

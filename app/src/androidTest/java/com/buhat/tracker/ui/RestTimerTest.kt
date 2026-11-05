@@ -122,7 +122,6 @@ class RestTimerTest {
 
         awaitTag("rest-card")
         compose.onNodeWithTag("rest-countdown").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("rest-countdown").assertIsDisplayed()
 
         compose.onNodeWithTag("skip-rest").performClick()
 

@@ -25,7 +25,6 @@ private val BuhatDarkColors = darkColorScheme(
     onError = BuhatBackground,
 )
 
-private val BuhatDarkOnSecondary = Color(0xFF221C03)
 private val BuhatDarkOnTertiary = Color(0xFF33260B)
 
 private val BuhatLightColors = lightColorScheme(

@@ -43,7 +43,7 @@ val releaseCredentials = runCatching {
 val validateReleaseCredentials by tasks.registering {
     doLast { releaseCredentials.getOrThrow() }
 }
-tasks.matching { it.name == "packageRelease" }.configureEach {
+tasks.matching { it.name == "packageRelease" || it.name == "packageReleaseBundle" }.configureEach {
     dependsOn(validateReleaseCredentials)
 }
 

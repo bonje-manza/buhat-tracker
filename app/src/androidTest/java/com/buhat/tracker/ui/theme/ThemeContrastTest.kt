@@ -34,6 +34,7 @@ class ThemeContrastTest {
                     Triple("body", c.onBackground, c.background),
                     Triple("card", c.onSurface, c.surface),
                     Triple("muted", c.onSurfaceVariant, c.surfaceVariant),
+                    Triple("inset", c.onSurfaceVariant, c.surfaceContainerLow),
                     Triple("link", c.primary, c.surface),
                     Triple("error", c.error, c.surface),
                     Triple("button", c.onPrimary, c.primary),
@@ -48,10 +49,13 @@ class ThemeContrastTest {
         compose.runOnIdle { assertTrue("Text contrast below 4.5: $failures", failures.isEmpty()) }
     }
 
-    @Test fun failureBadgeIsReadableInLightTheme() {
+    @Test fun failureBadgeIsReadableInDarkTheme() = checkFailureBadge(dark = true)
+    @Test fun failureBadgeIsReadableInLightTheme() = checkFailureBadge(dark = false)
+
+    private fun checkFailureBadge(dark: Boolean) {
         var background = Color.Unspecified
         compose.setContent {
-            BuhatTheme(darkTheme = false) {
+            BuhatTheme(darkTheme = dark) {
                 background = MaterialTheme.colorScheme.error
                 SetTypeBadge(SetType.FAILURE)
             }

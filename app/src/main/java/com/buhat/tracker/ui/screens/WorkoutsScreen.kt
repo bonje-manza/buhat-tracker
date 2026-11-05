@@ -36,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.buhat.tracker.data.ActiveSessionException
@@ -97,7 +99,10 @@ fun WorkoutsScreen(
             }
             var menuOpen by remember { mutableStateOf(false) }
             Box {
-                TextButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("workouts-menu")) { Text("⋯") }
+                TextButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.testTag("workouts-menu").semantics { contentDescription = "Workout options" },
+                ) { Text("⋯") }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(text = { Text("Exercise library") }, modifier = Modifier.testTag("open-library"),
                         onClick = { menuOpen = false; onOpenLibrary() })
@@ -253,7 +258,8 @@ private fun TemplateCardItem(
             Box {
                 TextButton(
                     onClick = { menuOpen = true },
-                    modifier = Modifier.testTag("template-menu-${card.template.name}"),
+                    modifier = Modifier.testTag("template-menu-${card.template.name}")
+                        .semantics { contentDescription = "Template options" },
                 ) {
                     Text("⋯")
                 }

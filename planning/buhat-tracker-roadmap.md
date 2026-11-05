@@ -524,9 +524,9 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 - [ ] Compare all five screens plus editors with the designs in dark and light themes; fix spacing, type scale, and color drift.
 - [ ] Font scaling, long names, empty states, contrast, and 48dp touch targets.
 - [ ] Full E2E checklist from section 4.6 on the phone.
-- [ ] Release keystore outside the repo; `keystore.properties` gitignored; signing config fails clearly when absent.
-- [ ] `allowBackup="false"`, no INTERNET permission, R8 minify and resource shrink; verify release build, not only debug.
-- [ ] versionCode 1 / versionName 1.0.0; build signed APK; install on the phone; test in airplane mode.
+- [x] Release keystore outside the repo; `keystore.properties` gitignored; signing config fails clearly when absent.
+- [x] `allowBackup="false"`, no INTERNET permission, R8 minify and resource shrink; verify release build, not only debug.
+- [x] versionCode 1 / versionName 1.0.0; build signed APK; install on the phone; test in airplane mode.
 - [ ] Back up the keystore and credentials in two places; record the update steps.
 - [ ] Share the APK with one friend; confirm install and launch.
 

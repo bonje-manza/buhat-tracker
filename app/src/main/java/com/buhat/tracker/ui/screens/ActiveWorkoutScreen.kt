@@ -349,7 +349,10 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             )
         }
         Box {
-            TextButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("active-menu")) {
+            TextButton(
+                onClick = { menuOpen = true },
+                modifier = Modifier.testTag("active-menu").semantics { contentDescription = "Workout options" },
+            ) {
                 Text("⋯")
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
