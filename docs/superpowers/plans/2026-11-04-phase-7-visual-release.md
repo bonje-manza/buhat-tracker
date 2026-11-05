@@ -75,14 +75,14 @@
 
 **Interfaces:** Build with `-PkeystoreProperties=<absolute external path>`. Properties are `storeFile`, `storePassword`, `keyAlias`, `keyPassword`; `storeFile` is an absolute external path. `scripts/verify-release.ps1 -SigningProperties <path>` runs real Gradle/SDK checks and exits nonzero on failure. Neither interface prints secrets. `assembleDebug` and debug tests need no release credentials.
 
-- [ ] Confirm whether an existing release key must be reused. For a new key, agree its permanent external location and have the user retain its credentials and two backups. A disposable test key cannot qualify the distribution artifact.
-- [ ] Write the negative signing check first: invoke `:app:assembleRelease` with a nonexistent external properties path, require a nonzero exit and the message `Release signing requires an external keystore.properties file`. Run it and retain the failure because the current build produces an unsigned APK instead.
-- [ ] Add cases for a missing required property, nonexistent keystore, properties/key located inside the repo, and incorrect credentials. Use temporary external test files, clean them in `finally`, and assert failure without exposing their contents. Assert `assembleDebug` still works without the release properties.
-- [ ] Add the minimal Gradle signing configuration and release-only validation dependency. Validate required fields and canonical paths, load the specified properties, and rely on AGP for cryptographic credential validation. Do not detect release builds by a brittle substring search of the command line.
-- [ ] Set release `isMinifyEnabled = true`, `isShrinkResources = true`, and Android's default optimized ProGuard configuration. Add targeted keep rules only if a real optimized-build failure requires them.
-- [ ] Extend the artifact check to build the signed APK, verify it with `apksigner verify --verbose --print-certs`, and match its certificate to the approved keystore. Check package/version/minSdk/targetSdk, `allowBackup=false`, non-debuggable, and no INTERNET permission using SDK tools. Require fresh R8 mapping/resource-shrinking task evidence from this build, not merely an old file.
-- [ ] Run the negative tests and signed positive path. Mutation-check the signing guard and artifact assertions, restore them, and rerun. Record the final APK's path, SHA-256, signer fingerprint, and terminal output without credentials.
-- [ ] Document the one build command, key backup/restore requirement, and same-key versionCode update steps in `docs/release.md`. Commit the passing build/check changes.
+- [x] Confirm whether an existing release key must be reused. For a new key, agree its permanent external location and have the user retain its credentials and two backups. A disposable test key cannot qualify the distribution artifact.
+- [x] Write the negative signing check first: invoke `:app:assembleRelease` with a nonexistent external properties path, require a nonzero exit and the message `Release signing requires an external keystore.properties file`. Run it and retain the failure because the current build produces an unsigned APK instead.
+- [x] Add cases for a missing required property, nonexistent keystore, properties/key located inside the repo, and incorrect credentials. Use temporary external test files, clean them in `finally`, and assert failure without exposing their contents. Assert `assembleDebug` still works without the release properties.
+- [x] Add the minimal Gradle signing configuration and release-only validation dependency. Validate required fields and canonical paths, load the specified properties, and rely on AGP for cryptographic credential validation. Do not detect release builds by a brittle substring search of the command line.
+- [x] Set release `isMinifyEnabled = true`, `isShrinkResources = true`, and Android's default optimized ProGuard configuration. Add targeted keep rules only if a real optimized-build failure requires them.
+- [x] Extend the artifact check to build the signed APK, verify it with `apksigner verify --verbose --print-certs`, and match its certificate to the approved keystore. Check package/version/minSdk/targetSdk, `allowBackup=false`, non-debuggable, and no INTERNET permission using SDK tools. Require fresh R8 mapping/resource-shrinking task evidence from this build, not merely an old file.
+- [x] Run the negative tests and signed positive path. Mutation-check the signing guard and artifact assertions, restore them, and rerun. Record the final APK's path, SHA-256, signer fingerprint, and terminal output without credentials.
+- [x] Document the one build command, key backup/restore requirement, and same-key versionCode update steps in `docs/release.md`. Commit the passing build/check changes.
 
 ## Task 3: Release-device acceptance and final verification
 
@@ -90,15 +90,15 @@
 
 **Interfaces:** Use the exact signed, minified APK from Task 2 and real Android UI/SAF/alarm boundaries. The existing debug instrumentation suite remains the automated regression gate. Manual release acceptance uses disposable fixture data, not an in-memory hook or a debug substitute.
 
-- [ ] Run full unit + Room + Compose regression through `powershell -NoProfile -ExecutionPolicy Bypass -File .opencode/skills/e2e-testing/scripts/run-e2e.ps1`. Capture actual counts, failures, permission check, and exit code. Also run `:app:lintDebug :app:lintRelease :app:test` using JDK 21 and release configuration as needed.
-- [ ] Run `scripts/verify-release.ps1` again after the last code change. Install the signed APK on the test phone after preserving any needed debug data. Confirm a fresh offline launch has six templates with set counts 9, 16, 17, 13, 12, 16.
+- [x] Run full unit + Room + Compose regression through `powershell -NoProfile -ExecutionPolicy Bypass -File .opencode/skills/e2e-testing/scripts/run-e2e.ps1`. Capture actual counts, failures, permission check, and exit code. Also run `:app:lintDebug :app:lintRelease :app:test` using JDK 21 and release configuration as needed.
+- [x] Run `scripts/verify-release.ps1` again after the last code change. Install the signed APK on the test phone after preserving any needed debug data. Confirm a fresh offline launch has six templates with set counts 9, 16, 17, 13, 12, 16.
 - [ ] Complete roadmap 4.6 on that APK: create/edit/reorder/duplicate/delete content, start and log all three set types, per-position raw prefill versus targets, edit/retype/delete active sets, finish/discard/resume, unit/theme changes, history/PR/range/deletion behavior, and backup through the real system picker. Compare rejected corrupted/newer backups against the pre-import data.
 - [ ] Use a recorded 3×6–10 fixture at 80 kg with reps 10/9/8: next targets 82.5×6, 80×10, 80×9; volume 2160 kg; best e1RM 106.7 kg; three working sets; one PR. A warmup does not change these figures. Capture the resulting export and compare restored entities, profile, and settings.
 - [ ] Prove restore after actual process termination, not only Activity recreation. Perform the physical 60-second locked-screen countdown, alert within ±2 seconds, audible sound/vibration, Skip/new-rest/finish cancellation, and notification-denied in-app path. Record user-observed sound/vibration and timing evidence.
 - [ ] Repeat all five screens and editors in both themes with 1.3× font scale, long names, empty states, and airplane mode. Restore the phone's prior font/radio settings afterward.
 - [ ] Prove update preservation: install code 1, create/export fixture data, temporarily build an otherwise identical code 2 with the same key, install with `adb install -r` without clearing data, and compare profile/settings/history/export. Restore committed versionCode 1 and retain the code-1 distribution APK separately. Record that the upgrade-test phone now has code 2.
 - [ ] User confirms two recoverable key/credential backups and a friend's successful install/launch of the code-1 APK. These physical checks remain pending until confirmation exists.
-- [ ] Run `verification-before-completion`, complexity review (`ponytail-review`), correctness review (`requesting-code-review`), and the signing/path/secrets security pass. Evaluate findings before edits, use TDD for accepted fixes, and rerun affected gates after changes.
+- [x] Run `verification-before-completion`, complexity review (`ponytail-review`), correctness review (`requesting-code-review`), and the signing/path/secrets security pass. Evaluate findings before edits, use TDD for accepted fixes, and rerun affected gates after changes.
 - [ ] Confirm the staged/diff file list stays within scope and contains no secrets. Show real terminal output and clearly separate passing checks from any blocked physical acceptance. Use `finishing-a-development-branch` for the integration decision.
 
 ## Workflow ledger
@@ -108,5 +108,7 @@
 - [x] Re-arm ponytail and apply the cut gate. Reuse the current E2E runner and UI primitives; one artifact-check script, no build plugin, release-testing framework, or dependency additions.
 - [x] User approves native execution.
 - [x] User confirms phone data is disposable and authorizes a first release key under `C:\Users\Admin\.android\buhat-release`.
-- [ ] Execute Tasks 1–3 with red/green and mutation evidence.
+- [x] Execute Task 1 with red/green and mutation evidence. Committed as `c2716cc`.
+- [x] Execute Task 2 with the signing mutation checks. Committed as `3d33a28`, review fixes as `23aac08`.
+- [ ] Execute Task 3: automated gates pass; physical and owner-confirmed checks remain.
 - [ ] Report verification and integration decision.
