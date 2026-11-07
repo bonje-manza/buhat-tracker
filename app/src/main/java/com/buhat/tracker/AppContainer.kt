@@ -1,6 +1,7 @@
 package com.buhat.tracker
 
 import android.content.Context
+import android.os.Build
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
@@ -8,16 +9,48 @@ import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.ProfileStore
 import com.buhat.tracker.data.SettingsStore
 import com.buhat.tracker.data.local.BuhatDatabase
+import com.buhat.tracker.diagnostics.DiagnosticsController
+import com.buhat.tracker.diagnostics.DiagnosticsLog
 import com.buhat.tracker.timer.RestTimer
 import com.buhat.tracker.ui.BackupController
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class AppContainer(private val context: Context, private val inMemory: Boolean = false) {
+const val DATABASE_NAME = "buhat.db"
+
+sealed interface StartupState {
+    data object Checking : StartupState
+    data object Ready : StartupState
+    data class DatabaseError(val reason: DatabaseFailure) : StartupState
+    data class SeedError(val message: String) : StartupState
+}
+
+enum class DatabaseFailure { DOWNGRADE, CORRUPT_OR_UNREADABLE }
+
+fun classifyDatabaseFailure(error: Throwable): DatabaseFailure =
+    if (error.message?.contains("downgrade", ignoreCase = true) == true) {
+        DatabaseFailure.DOWNGRADE
+    } else {
+        DatabaseFailure.CORRUPT_OR_UNREADABLE
+    }
+
+class AppContainer(
+    private val context: Context,
+    private val inMemory: Boolean = false,
+    val diagnosticsLog: DiagnosticsLog = DiagnosticsLog(File(context.filesDir, "diagnostics"), BuildConfig.DEBUG),
+    private val seed: suspend (BuhatRepository) -> Unit = { it.seedIfNeeded() },
+) {
 
     private val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -37,15 +70,62 @@ class AppContainer(private val context: Context, private val inMemory: Boolean =
     val database: BuhatDatabase = if (inMemory) {
         Room.inMemoryDatabaseBuilder(context, BuhatDatabase::class.java).build()
     } else {
-        Room.databaseBuilder(context, BuhatDatabase::class.java, "buhat.db")
+        Room.databaseBuilder(context, BuhatDatabase::class.java, DATABASE_NAME)
             .addMigrations(BuhatDatabase.MIGRATION_1_2)
             .build()
     }
     val repository = BuhatRepository(database, settingsStore, profileStore)
     val restTimer = RestTimer(context, settingsStore)
-    val backupController = BackupController(repository, restTimer, appScope)
+    val backupController = BackupController(repository, restTimer, appScope, log = diagnosticsLog)
+    val diagnosticsController = DiagnosticsController(
+        diagnosticsLog,
+        appScope,
+        appInfo = {
+            "Buhat ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n" +
+                "Android ${Build.VERSION.SDK_INT}\n" +
+                "Device ${Build.MANUFACTURER} ${Build.MODEL}"
+        },
+    )
+
+    private val _startupState = MutableStateFlow<StartupState>(StartupState.Checking)
+    val startupState: StateFlow<StartupState> = _startupState
+    private var startupJob: Job? = null
+
+    fun start() {
+        startupJob?.cancel()
+        startupJob = appScope.launch { startNow() }
+    }
+
+    suspend fun startNow() {
+        _startupState.value = StartupState.Checking
+        try {
+            withContext(Dispatchers.IO) { database.openHelper.writableDatabase }
+        } catch (e: Exception) {
+            diagnosticsLog.error("database", "open failed", e)
+            _startupState.value = StartupState.DatabaseError(classifyDatabaseFailure(e))
+            return
+        }
+        try {
+            withContext(Dispatchers.IO) {
+                if (settingsStore.lastRunVersionCode.first() == null) {
+                    settingsStore.acknowledgeVersion(BuildConfig.VERSION_CODE)
+                }
+                seed(repository)
+            }
+            _startupState.value = StartupState.Ready
+        } catch (e: Exception) {
+            diagnosticsLog.error("seed", "seed failed", e)
+            _startupState.value = StartupState.SeedError("Setup could not finish. Retry to finish preparing the app.")
+        }
+    }
+
+    suspend fun stop() {
+        startupJob?.cancelAndJoin()
+        startupJob = null
+    }
 
     fun close() {
+        startupJob?.cancel()
         database.close()
         dataStoreScope.cancel()
         appScope.cancel()

@@ -10,10 +10,12 @@ import com.buhat.tracker.data.BackupSummary
 import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.MAX_BACKUP_BYTES
 import com.buhat.tracker.data.Settings
+import com.buhat.tracker.data.readBackupText
 import com.buhat.tracker.data.requireBackupFits
+import com.buhat.tracker.diagnostics.DiagnosticsLog
 import com.buhat.tracker.timer.RestTimer
-import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +29,10 @@ const val DEFAULT_IO_TIMEOUT_MILLIS = 30_000L
 
 private const val TIMEOUT_MESSAGE = "The file operation took too long. Try again."
 
+fun backupFileName(): String = "buhat-backup-${LocalDate.now()}.json"
+
+fun diagnosticsFileName(): String = "buhat-diagnostics-${LocalDate.now()}.txt"
+
 /**
  * Backup state lives outside the composition so an in-flight import and its retry
  * message survive activity recreation.
@@ -37,6 +43,7 @@ class BackupController(
     private val scope: CoroutineScope,
     private val maxBackupBytes: Int = MAX_BACKUP_BYTES,
     private val ioTimeoutMillis: Long = DEFAULT_IO_TIMEOUT_MILLIS,
+    private val log: DiagnosticsLog? = null,
 ) {
     var busy by mutableStateOf(false)
         private set
@@ -59,7 +66,7 @@ class BackupController(
         }
     }
 
-    fun export(resolver: ContentResolver, uri: Uri) {
+    fun export(resolver: ContentResolver, uri: Uri, onSuccess: () -> Unit = {}) {
         scope.launch {
             busy = true
             message = null
@@ -75,12 +82,21 @@ class BackupController(
                         stream.use { it.write(bytes) }
                     }
                 }
+                // The file exists now. A metadata failure must not turn a successful export into an error.
+                runCatching {
+                    repository.settingsStore.markExported()
+                    repository.settingsStore.clearBackupSnooze()
+                }.onFailure { log?.warn("backup", "export metadata write failed", it) }
+                log?.info("backup", "export succeeded")
+                runCatching(onSuccess)
                 message = "Backup exported."
             } catch (e: TimeoutCancellationException) {
+                log?.warn("backup", "export timed out")
                 message = TIMEOUT_MESSAGE
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                log?.warn("backup", "export failed", e)
                 message = if (e is BackupException) e.message
                 else "Could not write the backup file. Try another location."
             } finally {
@@ -101,10 +117,12 @@ class BackupController(
                 pendingImport = text to repository.previewBackup(text)
                 importError = null
             } catch (e: TimeoutCancellationException) {
+                log?.warn("backup", "import timed out")
                 message = TIMEOUT_MESSAGE
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                log?.warn("backup", "import read failed", e)
                 message = if (e is BackupException) e.message
                 else "Could not read the backup file. Try selecting it again."
             } finally {
@@ -124,12 +142,14 @@ class BackupController(
                     restTimer.cancel()
                 }
                 pendingImport = null
+                log?.info("backup", "import succeeded")
                 message = "Imported ${pending.second.exercises} exercises, " +
                     "${pending.second.templates} templates, ${pending.second.sessions} workouts, " +
                     "${pending.second.sets} sets."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                log?.warn("backup", "import failed", e)
                 importError = if (e is BackupException) e.message else "Could not import the backup. Try again."
             } finally {
                 busy = false
@@ -139,25 +159,5 @@ class BackupController(
 
     fun cancelImport() {
         if (!busy) pendingImport = null
-    }
-}
-
-private fun readBackupText(resolver: ContentResolver, uri: Uri): String {
-    val stream = resolver.openInputStream(uri)
-        ?: throw BackupException("Could not read the backup file.")
-    return stream.use { input ->
-        val output = ByteArrayOutputStream()
-        val buffer = ByteArray(8192)
-        var total = 0
-        while (true) {
-            val read = input.read(buffer)
-            if (read < 0) break
-            total += read
-            if (total > MAX_BACKUP_BYTES) {
-                throw BackupException("This backup file is larger than 20 MB.")
-            }
-            output.write(buffer, 0, read)
-        }
-        output.toString(Charsets.UTF_8.name())
     }
 }

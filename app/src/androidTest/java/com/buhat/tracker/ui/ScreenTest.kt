@@ -104,7 +104,6 @@ class ScreenTest {
 
     @Test
     fun bottomTabLabelsFitAtLargeFontScale() {
-        val container = ApplicationProvider.getApplicationContext<BuhatApplication>().container
         var measurer: TextMeasurer? = null
         var tabStyle: TextStyle? = null
         compose.runOnUiThread {
@@ -114,7 +113,7 @@ class ScreenTest {
                         measurer = rememberTextMeasurer()
                         tabStyle = MaterialTheme.typography.titleSmall
                         Box(Modifier.requiredWidth(384.dp)) {
-                            BuhatApp(container.repository, container.profileStore, container.restTimer, container.backupController)
+                            BuhatBottomBar(selected = BuhatTab.Home, onSelect = {})
                         }
                     }
                 }

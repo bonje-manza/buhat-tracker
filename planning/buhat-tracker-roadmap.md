@@ -2,7 +2,7 @@
 
 ## 1. Status, goal, and success criteria
 
-**Status:** Phase 7 is complete. The signed versionCode 2 / versionName 1.0.0 release passes R8, resource shrinking, no-INTERNET, and backup-disabled checks. Automated suite: 74 unit, 124 device, 0 failed. Physical and owner acceptance checks pass on the signed release.
+**Status:** Phase 8 is complete. The app now has local diagnostics, a backup reminder, startup recovery, and an update backup prompt. Latest recorded automated suite: 99 unit, 166 device, 0 failed. The signed release verifier passes with no INTERNET permission and no new permissions. Physical and owner acceptance checks pass on the signed release.
 
 **Goal:** A private, offline Android strength log for you and your friends. Each install owns its data. You train from premade or custom templates, log every set with weight, reps, RIR, and type, get per-set double-progression targets, run a rest timer, and review e1RM progress. Data moves by JSON export/import. Delivery is a signed APK.
 
@@ -49,6 +49,9 @@
 - Editing a finished workout (deleting one is allowed).
 - Localization beyond English.
 - App lock, encryption at rest, cloud auto-backup.
+- Automatic folder export and cloud auto-backup.
+- Encrypted backup files.
+- Network crash reporting or analytics.
 
 ## 3. Decisions and rationale
 
@@ -539,6 +542,38 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 - Designs match at phone size; no clipped text at 1.3× font scale.
 - Keystore and `keystore.properties` are outside git; `git status` is clean of secrets.
 
+### Phase 8 - Personal release hardening
+
+**Outcome:** The app protects its own data and explains failures without a network or cloud service. A missing or stale backup is visible, a crash leaves a local report, a database that cannot open shows a recovery path, and an app update asks for a backup.
+
+**Prerequisites:** Phase 7.
+
+**Work**
+
+- [x] Add a local diagnostics log under app-private `filesDir/diagnostics`. Debug builds record informational events, release builds record warnings and errors only. Rotate at a fixed size and keep the previous file. Never record profile fields, exercise names, weights, reps, or backup contents.
+- [x] Install a default uncaught exception handler that writes a crash report and a pending-crash marker, then delegates to the previous handler. Keep the last few crash reports and prune older ones.
+- [x] Add "Export diagnostics" to Settings. The file contains app version, versionCode, Android version, device model, recent log lines, and crash reports. It uses the Storage Access Framework and contains no training data. The action works during an active workout.
+- [x] Check the database explicitly on startup and expose loading, ready, database-error, and seed-error states. Do not render the main UI when the database cannot open.
+- [x] Add a recovery screen for database open failures. Offer "Export diagnostics", "Import backup", and "Reset local data". Validate a chosen backup before resetting anything, reset the database and DataStore, recreate the container, then import. A reset requires confirmation. A downgrade gets a specific "created by a newer version" message, not a crash.
+- [x] Catch seed failures, log them, and show a retry action instead of crashing.
+- [x] Store `lastExportAt` only after the export file write succeeds. Show the last backup date in Settings.
+- [x] Show a Home reminder when the user has at least one finished workout and has never exported or the last export is 14 days old. The reminder opens export directly. "Remind me in 7 days" stores a snooze.
+- [x] Store the acknowledged app versionCode. On the first launch after a version change, show a one-time dialog with "Export backup" and "Not now". Fresh installs do not show it. A successful export or "Not now" acknowledges the version. If a workout is active, explain that export needs the workout finished.
+- [x] Log export, import, seed, database, and crash failures with event names and counts. Keep user-facing messages unchanged.
+- [x] Add unit tests for the reminder threshold and snooze, log level gating, rotation, crash formatting, and the no-PII rule.
+- [x] Add device tests for the last-export timestamp, reminder and snooze, update prompt, seed-failure retry, crash notice, diagnostics export, and the recovery screen for a higher-version database. Cover reset and import recovery end to end.
+
+**Acceptance checks**
+
+- A fresh install with no finished workouts shows no backup reminder. After the first finished workout, Home shows it. Export clears it. It returns after 14 days or after a 7-day snooze expires.
+- A cancelled, failed, or oversized export does not update the last backup date.
+- A debug crash writes a local report and the next launch shows a one-time notice. Diagnostics export contains the report and no profile, exercise, or workout values.
+- A database file with a higher schema version opens to the recovery screen instead of crashing. Diagnostics export works. Reset reseeds. Import backup restores the previous data.
+- The first launch after a versionCode change shows the update prompt once. Fresh installs and later launches do not.
+- A forced seed failure is logged, shows a retry action, and does not crash.
+- The full E2E suite passes on the current head. The release build has no INTERNET permission, no new permissions, and writes diagnostics only to app-private storage or a user-chosen file.
+- Existing export/import, timer, active-session, analytics, and visual behavior is unchanged.
+
 ### 5.1 Traceability
 
 | Requirement | Planned work | Acceptance evidence |
@@ -558,6 +593,10 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 | Export/import | Phase 6 | Round trip on phone; invalid files rejected |
 | Signed APK distribution | Phase 7 | Release APK installs on phone and a friend's device |
 | Physical-phone validation | Phases 0, 7 | ADB device listed; full E2E checklist passes |
+| Backup age and reminder | Phase 8 | Reminder appears after a finished workout, export clears it, 7-day snooze works |
+| Local diagnostics and crash reports | Phase 8 | Crash notice appears, diagnostics export contains no training data |
+| Recovery and rollback | Phase 8 | Higher-version database shows recovery screen, reset and import restore data |
+| Update backup prompt | Phase 8 | Prompt appears once after versionCode change, not on fresh install |
 
 ## 6. Dependencies, remaining uncertainties, and next step
 
@@ -601,4 +640,4 @@ None. Temurin JDK 21 is installed and `JAVA_HOME` points at it.
 
 ### Next step
 
-Phase 7 is complete and the signed versionCode 2 release is the distribution build. Future work starts with a new plan: bump versionCode for the next release, keep the signing backups current, and export data before schema-changing updates.
+Phase 8 is complete. Bump versionCode for the next release, keep the signing backups current, and export data before schema-changing updates.

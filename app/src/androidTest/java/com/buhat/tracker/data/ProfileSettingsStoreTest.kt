@@ -8,9 +8,11 @@ import com.buhat.tracker.domain.PreviousSetSource
 import com.buhat.tracker.domain.WeightUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -86,6 +88,8 @@ class ProfileSettingsStoreTest {
         settingsStore.markSeeded(3)
 
         scopes.forEach { it.cancel() }
+        // Wait for the old DataStore to release the file before opening it again.
+        runBlocking { scopes.forEach { it.coroutineContext[Job]?.join() } }
         scopes.clear()
 
         // Recreate DataStore over the same file: values must come back from disk.
@@ -129,5 +133,54 @@ class ProfileSettingsStoreTest {
 
         assertEquals(endsAt, settingsStore.settings.first().restEndsAt)
         assertEquals(135, settingsStore.settings.first().restWorkingSeconds)
+    }
+
+    @Test
+    fun backupAndVersionMetadataPersistIndependently() = runTest {
+        val (_, settingsStore) = freshStores()
+        assertNull(settingsStore.lastExportAt.first())
+        assertNull(settingsStore.backupSnoozedUntil.first())
+        assertNull(settingsStore.lastRunVersionCode.first())
+
+        settingsStore.markExported(1_800_000_000_000L)
+        settingsStore.snoozeBackupReminder(1_800_100_000_000L)
+        settingsStore.acknowledgeVersion(3)
+
+        assertEquals(1_800_000_000_000L, settingsStore.lastExportAt.first())
+        assertEquals(1_800_100_000_000L, settingsStore.backupSnoozedUntil.first())
+        assertEquals(3, settingsStore.lastRunVersionCode.first())
+
+        settingsStore.clearBackupSnooze()
+        assertNull(settingsStore.backupSnoozedUntil.first())
+    }
+
+    @Test
+    fun savingSettingsDoesNotClearBackupMetadata() = runTest {
+        val (_, settingsStore) = freshStores()
+        settingsStore.markExported(123L)
+        settingsStore.snoozeBackupReminder(456L)
+        settingsStore.acknowledgeVersion(3)
+
+        settingsStore.save(Settings(theme = AppTheme.LIGHT))
+
+        assertEquals(123L, settingsStore.lastExportAt.first())
+        assertEquals(456L, settingsStore.backupSnoozedUntil.first())
+        assertEquals(3, settingsStore.lastRunVersionCode.first())
+    }
+
+    @Test
+    fun clearAllRemovesProfileSettingsAndBackupMetadata() = runTest {
+        val (profiles, settingsStore) = freshStores()
+        profiles.save(Profile("Avery", null, null, null, null))
+        settingsStore.save(Settings(theme = AppTheme.LIGHT))
+        settingsStore.markExported(123L)
+        settingsStore.acknowledgeVersion(3)
+
+        settingsStore.clearAll()
+
+        assertNull(profiles.profile.first().name)
+        assertEquals(AppTheme.DARK, settingsStore.settings.first().theme)
+        assertNull(settingsStore.lastExportAt.first())
+        assertNull(settingsStore.lastRunVersionCode.first())
     }
 }

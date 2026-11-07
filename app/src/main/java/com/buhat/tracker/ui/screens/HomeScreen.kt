@@ -1,6 +1,8 @@
 package com.buhat.tracker.ui.screens
 
 import android.annotation.SuppressLint
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -18,21 +20,25 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.buhat.tracker.data.BuhatRepository
@@ -40,12 +46,17 @@ import com.buhat.tracker.data.HomeDashboard
 import com.buhat.tracker.data.Profile
 import com.buhat.tracker.data.ProfileStore
 import com.buhat.tracker.data.local.ProfileStats
+import com.buhat.tracker.domain.BACKUP_SNOOZE_DAYS
+import com.buhat.tracker.domain.DAY_MILLIS
 import com.buhat.tracker.domain.HOME_WINDOW_DAYS
 import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.e1rmTrend
 import com.buhat.tracker.domain.fourWeekStats
 import com.buhat.tracker.domain.formatWeight
 import com.buhat.tracker.domain.homeAnalyticsNow
+import com.buhat.tracker.domain.shouldRemindBackup
+import com.buhat.tracker.ui.BackupController
+import com.buhat.tracker.ui.backupFileName
 import com.buhat.tracker.ui.components.BuhatCard
 import com.buhat.tracker.ui.components.BuhatChoiceChip
 import com.buhat.tracker.ui.components.BuhatEmptyState
@@ -53,7 +64,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 
 private data class HomeData(
     val profile: Profile,
@@ -66,12 +79,26 @@ private data class HomeData(
 fun HomeScreen(
     repository: BuhatRepository,
     profileStore: ProfileStore,
+    backupController: BackupController,
     onOpenProfile: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenProgress: (String?) -> Unit,
 ) {
     var attempt by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf(false) }
+    val lastExportAt by remember(repository) {
+        repository.settingsStore.lastExportAt.catch { emit(null) }
+    }.collectAsState(initial = null)
+    val snoozedUntil by remember(repository) {
+        repository.settingsStore.backupSnoozedUntil.catch { emit(null) }
+    }.collectAsState(initial = null)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        uri?.let { backupController.export(context.contentResolver, it) }
+    }
     @SuppressLint("ProduceStateDoesNotAssignValue") // Lint cannot see the assignment inside collect.
     val data by produceState<HomeData?>(null, repository, profileStore, attempt) {
         error = false
@@ -172,6 +199,21 @@ fun HomeScreen(
                 ProfileTile("Height", profile.heightCm?.let { "$it cm" } ?: "—", Modifier.weight(1f))
             }
         }
+        if (shouldRemindBackup(lastExportAt, snoozedUntil, loaded.now, dashboard.profileStats.totalWorkouts > 0)) {
+            Spacer(Modifier.height(16.dp))
+            BackupReminderCard(
+                lastExportAt = lastExportAt,
+                now = loaded.now,
+                onExport = { exportLauncher.launch(backupFileName()) },
+                onSnooze = {
+                    scope.launch {
+                        repository.settingsStore.snoozeBackupReminder(
+                            System.currentTimeMillis() + BACKUP_SNOOZE_DAYS * DAY_MILLIS,
+                        )
+                    }
+                },
+            )
+        }
         Spacer(Modifier.height(24.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Dashboard", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
@@ -254,5 +296,43 @@ private fun ProfileTile(label: String, value: String, modifier: Modifier = Modif
             style = MaterialTheme.typography.titleMedium,
         )
         detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+    }
+}
+
+@Composable
+private fun BackupReminderCard(
+    lastExportAt: Long?,
+    now: Long,
+    onExport: () -> Unit,
+    onSnooze: () -> Unit,
+) {
+    BuhatCard(Modifier.testTag("backup-reminder")) {
+        Text(
+            text = "Back up your data",
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleLarge,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = if (lastExportAt == null) {
+                "No backup yet. Your data is only on this phone."
+            } else {
+                val days = ((now - lastExportAt) / DAY_MILLIS).toInt().coerceAtLeast(0)
+                if (days == 1) "Last backup was 1 day ago." else "Last backup was $days days ago."
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = onExport,
+                modifier = Modifier.weight(1f).testTag("backup-reminder-export"),
+            ) { Text("Export now") }
+            TextButton(
+                onClick = onSnooze,
+                modifier = Modifier.testTag("backup-reminder-snooze"),
+            ) { Text("Remind me in 7 days") }
+        }
     }
 }

@@ -5,7 +5,9 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -15,6 +17,13 @@ class TabNavigationTest {
 
     @get:Rule
     val compose = createAndroidComposeRule<MainActivity>()
+    private val app = ApplicationProvider.getApplicationContext<BuhatApplication>()
+
+    @Before
+    fun setUp() {
+        app.resetForTest()
+        compose.waitForIdle()
+    }
 
     @Test
     fun tabsSwitchScreens() {

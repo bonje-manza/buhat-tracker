@@ -63,7 +63,9 @@ class BackupScreenTest {
         val owner = object : ActivityResultRegistryOwner { override val activityResultRegistry = registry }
         restoration.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-                BuhatTheme { SettingsScreen(repo, controller, onBack = {}, onOpenProfile = {}) }
+                BuhatTheme {
+                    SettingsScreen(repo, controller, app.container.diagnosticsController, onBack = {}, onOpenProfile = {})
+                }
             }
         }
     }
@@ -174,7 +176,23 @@ class BackupScreenTest {
         click("export-data")
         awaitText("This backup is larger than 20 MB. Export is not possible.")
         assertEquals("keep me", file.readText())
+        assertNull(runBlocking { repo.settingsStore.lastExportAt.first() })
         compose.onNodeWithTag("export-data").assertIsEnabled()
+    }
+
+    @Test fun successfulExportRecordsTheDateAndCancelDoesNot() {
+        startScreen()
+        assertNull(runBlocking { repo.settingsStore.lastExportAt.first() })
+
+        cancelPicker = true
+        click("export-data")
+        compose.waitUntil(5_000) { !app.container.backupController.busy }
+        assertNull(runBlocking { repo.settingsStore.lastExportAt.first() })
+
+        cancelPicker = false
+        click("export-data")
+        awaitText("Backup exported.")
+        assertNotNull(runBlocking { repo.settingsStore.lastExportAt.first() })
     }
 
     @Test fun timedOutExportReportsAndUnlocksTheScreen() {

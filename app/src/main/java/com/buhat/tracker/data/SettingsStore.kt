@@ -38,6 +38,31 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
 
     val settings = dataStore.data.map { it.toSettings() }
 
+    val lastExportAt = dataStore.data.map { it[LAST_EXPORT_AT] }
+    val backupSnoozedUntil = dataStore.data.map { it[BACKUP_SNOOZED_UNTIL] }
+    val lastRunVersionCode = dataStore.data.map { it[LAST_RUN_VERSION_CODE] }
+
+    suspend fun markExported(at: Long = System.currentTimeMillis()) {
+        dataStore.edit { it[LAST_EXPORT_AT] = at }
+    }
+
+    suspend fun snoozeBackupReminder(until: Long) {
+        dataStore.edit { it[BACKUP_SNOOZED_UNTIL] = until }
+    }
+
+    suspend fun clearBackupSnooze() {
+        dataStore.edit { it.remove(BACKUP_SNOOZED_UNTIL) }
+    }
+
+    suspend fun acknowledgeVersion(code: Int) {
+        dataStore.edit { it[LAST_RUN_VERSION_CODE] = code }
+    }
+
+    /** Recovery only: clears profile, settings, and release-hardening metadata. */
+    suspend fun clearAll() {
+        dataStore.edit { it.clear() }
+    }
+
     suspend fun save(settings: Settings) {
         dataStore.edit { it.write(settings) }
     }
@@ -114,5 +139,8 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         val REST_ENDS_AT = longPreferencesKey("settings_rest_ends_at")
         val NOTIFICATION_PERMISSION_REQUESTED = booleanPreferencesKey("settings_notification_permission_requested")
         val SEED_VERSION = intPreferencesKey("settings_seed_version")
+        val LAST_EXPORT_AT = longPreferencesKey("settings_last_export_at")
+        val BACKUP_SNOOZED_UNTIL = longPreferencesKey("settings_backup_snoozed_until")
+        val LAST_RUN_VERSION_CODE = intPreferencesKey("settings_last_run_version_code")
     }
 }

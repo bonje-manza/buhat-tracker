@@ -35,18 +35,20 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.Settings
+import com.buhat.tracker.diagnostics.DiagnosticsController
 import com.buhat.tracker.domain.AppTheme
 import com.buhat.tracker.domain.PreviousSetSource
 import com.buhat.tracker.domain.REST_SECONDS_MAX
 import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.formatRestSeconds
 import com.buhat.tracker.ui.BackupController
+import com.buhat.tracker.ui.backupFileName
 import com.buhat.tracker.ui.components.BuhatCard
+import com.buhat.tracker.ui.diagnosticsFileName
 import com.buhat.tracker.ui.components.BuhatScreen
 import com.buhat.tracker.ui.components.BuhatSegmentedControl
 import com.buhat.tracker.ui.components.BuhatStepper
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
@@ -56,6 +58,7 @@ import kotlinx.coroutines.flow.map
 fun SettingsScreen(
     repository: BuhatRepository,
     backupController: BackupController,
+    diagnosticsController: DiagnosticsController,
     onBack: () -> Unit,
     onOpenProfile: () -> Unit,
 ) {
@@ -70,6 +73,9 @@ fun SettingsScreen(
     val hasActiveSession by remember(repository, attempt) {
         repository.activeSession().map { it != null }.catch { loadError = true }
     }.collectAsState<Boolean, Boolean?>(null)
+    val lastExportAt by remember(settingsStore) {
+        settingsStore.lastExportAt.catch { emit(null) }
+    }.collectAsState(initial = null)
     val context = LocalContext.current
 
     val busy = backupController.busy
@@ -92,6 +98,13 @@ fun SettingsScreen(
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         backupController.importFile(context.contentResolver, uri)
+    }
+
+    val diagnosticsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        diagnosticsController.export(context.contentResolver, uri)
     }
 
     val currentSettings = settings
@@ -223,6 +236,13 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = lastExportAt?.let { "Last backup: ${formatExportDate(it)}" } ?: "No backup yet.",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.testTag("last-backup"),
+                    )
                     if (hasActiveSession == true) {
                         Spacer(Modifier.height(8.dp))
                         Text(
@@ -234,7 +254,7 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     Button(
-                        onClick = { exportLauncher.launch("buhat-backup-${LocalDate.now()}.json") },
+                        onClick = { exportLauncher.launch(backupFileName()) },
                         enabled = hasActiveSession == false && !busy,
                         modifier = Modifier.fillMaxWidth().testTag("export-data"),
                     ) {
@@ -256,6 +276,33 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.testTag("settings-message").semantics { liveRegion = LiveRegionMode.Polite },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+
+                BuhatCard(Modifier.testTag("settings-diagnostics")) {
+                    SectionTitle("Diagnostics")
+                    Text(
+                        text = "Logs stay on this device. Exporting shares app logs and crash reports, not training data.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { diagnosticsLauncher.launch(diagnosticsFileName()) },
+                        enabled = !diagnosticsController.busy,
+                        modifier = Modifier.fillMaxWidth().testTag("export-diagnostics"),
+                    ) {
+                        Text("Export diagnostics")
+                    }
+                    diagnosticsController.message?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = it,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.testTag("diagnostics-message"),
                         )
                     }
                 }
