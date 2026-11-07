@@ -61,6 +61,7 @@ fun ProfileEditorScreen(
         var weight by rememberSaveable(loaded, unit) { mutableStateOf(displayedWeight) }
         var height by rememberSaveable(loaded) { mutableStateOf(loaded.heightCm?.toString().orEmpty()) }
         var error by remember { mutableStateOf<String?>(null) }
+        var saving by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
 
         Column(
@@ -125,6 +126,7 @@ fun ProfileEditorScreen(
             Spacer(Modifier.height(24.dp))
             Button(
                 onClick = {
+                    if (saving) return@Button
                     val ageValue = age.toIntOrNull()
                      val weightValue = if (weight == displayedWeight) loaded.weightKg
                          else weight.toDoubleOrNull()?.let { if (unit == WeightUnit.LB) lbToKg(it) else it }
@@ -140,6 +142,7 @@ fun ProfileEditorScreen(
                         else -> null
                     }
                     if (error == null) {
+                        saving = true
                         scope.launch {
                             profileStore.save(
                                 Profile(
@@ -154,6 +157,7 @@ fun ProfileEditorScreen(
                         }
                     }
                 },
+                enabled = !saving,
                 modifier = Modifier.fillMaxWidth().testTag("save-profile"),
             ) {
                 Text("Save profile")

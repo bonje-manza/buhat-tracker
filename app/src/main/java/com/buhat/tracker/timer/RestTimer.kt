@@ -9,6 +9,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.VibrationEffect
@@ -41,6 +42,19 @@ private fun canPostNotifications(context: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
         PackageManager.PERMISSION_GRANTED
+
+/**
+ * Whether the completion alert can be delivered as a notification; a muted channel cannot, and
+ * neither can a channel left with no sound and no vibration.
+ */
+internal fun canShowRestComplete(context: Context, channelId: String = COMPLETE_CHANNEL_ID): Boolean {
+    if (!canPostNotifications(context)) return false
+    val manager = notificationManager(context)
+    if (!manager.areNotificationsEnabled()) return false
+    val channel = manager.getNotificationChannel(channelId) ?: return false
+    return channel.importance != NotificationManager.IMPORTANCE_NONE &&
+        (channel.sound != null || channel.shouldVibrate())
+}
 
 fun ensureRestChannels(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -106,27 +120,42 @@ fun cancelOngoingRestNotification(context: Context) {
     notificationManager(context).cancel(ONGOING_NOTIFICATION_ID)
 }
 
-/** Sound and vibration when notifications cannot carry the rest alert. */
-fun playDirectAlert(context: Context) {
-    runCatching {
-        RingtoneManager.getRingtone(context, Settings.System.DEFAULT_NOTIFICATION_URI)?.play()
-    }
-    runCatching {
+// Alarm usage keeps sound and vibration audible when the app is in the background.
+internal fun directAlertAudioAttributes() = AudioAttributes.Builder()
+    .setUsage(AudioAttributes.USAGE_ALARM)
+    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+    .build()
+
+/** Sound and vibration when notifications cannot carry the rest alert; true if either played. */
+fun playDirectAlert(context: Context): Boolean {
+    val sounded = runCatching {
+        RingtoneManager.getRingtone(context, Settings.System.DEFAULT_NOTIFICATION_URI)?.apply {
+            audioAttributes = directAlertAudioAttributes()
+            play()
+        } != null
+    }.getOrDefault(false)
+    val vibrated = runCatching {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
         } else {
             @Suppress("DEPRECATION")
             context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         }
-        vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 400, 200, 400), -1))
-    }
+        @Suppress("DEPRECATION")
+        vibrator?.vibrate(
+            VibrationEffect.createWaveform(longArrayOf(0, 400, 200, 400), -1),
+            directAlertAudioAttributes(),
+        )
+        vibrator != null
+    }.getOrDefault(false)
+    return sounded || vibrated
 }
 
 class RestTimer(
     context: Context,
     private val settingsStore: SettingsStore,
-    private val canNotify: (Context) -> Boolean = ::canPostNotifications,
-    private val directAlert: (Context) -> Unit = ::playDirectAlert,
+    private val canNotify: (Context) -> Boolean = ::canShowRestComplete,
+    private val directAlert: (Context) -> Boolean = ::playDirectAlert,
 ) {
 
     private val appContext = context.applicationContext

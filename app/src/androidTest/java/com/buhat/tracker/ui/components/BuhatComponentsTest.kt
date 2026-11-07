@@ -1,5 +1,7 @@
 package com.buhat.tracker.ui.components
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -161,12 +163,20 @@ class BuhatComponentsTest {
     @Test
     fun cardAndBothThemesRenderTheirContent() {
         compose.setContent {
-            BuhatTheme(darkTheme = false) {
-                BuhatCard {
-                    androidx.compose.material3.Text("light content")
+            Column {
+                BuhatTheme(darkTheme = false) {
+                    BuhatCard {
+                        Text("light content")
+                    }
+                }
+                BuhatTheme(darkTheme = true) {
+                    BuhatCard {
+                        Text("dark content")
+                    }
                 }
             }
         }
         compose.onNodeWithText("light content").assertExists()
+        compose.onNodeWithText("dark content").assertExists()
     }
 }

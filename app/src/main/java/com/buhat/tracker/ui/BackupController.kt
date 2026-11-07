@@ -10,6 +10,7 @@ import com.buhat.tracker.data.BackupSummary
 import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.MAX_BACKUP_BYTES
 import com.buhat.tracker.data.Settings
+import com.buhat.tracker.data.requireBackupFits
 import com.buhat.tracker.timer.RestTimer
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -17,8 +18,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+
+const val DEFAULT_IO_TIMEOUT_MILLIS = 30_000L
+
+private const val TIMEOUT_MESSAGE = "The file operation took too long. Try again."
 
 /**
  * Backup state lives outside the composition so an in-flight import and its retry
@@ -28,6 +35,8 @@ class BackupController(
     private val repository: BuhatRepository,
     private val restTimer: RestTimer,
     private val scope: CoroutineScope,
+    private val maxBackupBytes: Int = MAX_BACKUP_BYTES,
+    private val ioTimeoutMillis: Long = DEFAULT_IO_TIMEOUT_MILLIS,
 ) {
     var busy by mutableStateOf(false)
         private set
@@ -55,13 +64,20 @@ class BackupController(
             busy = true
             message = null
             try {
-                val json = repository.exportBackup()
-                withContext(Dispatchers.IO) {
-                    val stream = resolver.openOutputStream(uri, "rwt")
-                        ?: throw IOException("Could not open the file.")
-                    stream.use { it.write(json.toByteArray()) }
+                // Encoding is O(size of the whole backup), so it must not run on the main thread.
+                val bytes = withContext(Dispatchers.IO) { repository.exportBackup().toByteArray() }
+                requireBackupFits(bytes.size, maxBackupBytes)
+                // Cancellation cannot interrupt a blocking SAF write, so a slow-but-successful export may time out.
+                withTimeout(ioTimeoutMillis) {
+                    withContext(Dispatchers.IO) {
+                        val stream = resolver.openOutputStream(uri, "rwt")
+                            ?: throw IOException("Could not open the file.")
+                        stream.use { it.write(bytes) }
+                    }
                 }
                 message = "Backup exported."
+            } catch (e: TimeoutCancellationException) {
+                message = TIMEOUT_MESSAGE
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -78,9 +94,14 @@ class BackupController(
             busy = true
             message = null
             try {
-                val text = withContext(Dispatchers.IO) { readBackupText(resolver, uri) }
+                // Cancellation cannot interrupt a blocking SAF read, so a slow-but-successful import may time out.
+                val text = withTimeout(ioTimeoutMillis) {
+                    withContext(Dispatchers.IO) { readBackupText(resolver, uri) }
+                }
                 pendingImport = text to repository.previewBackup(text)
                 importError = null
+            } catch (e: TimeoutCancellationException) {
+                message = TIMEOUT_MESSAGE
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

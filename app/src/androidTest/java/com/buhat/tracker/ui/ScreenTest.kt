@@ -14,6 +14,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -55,6 +57,7 @@ class ScreenTest {
 
     private fun openWorkouts() {
         compose.onNodeWithTag("tab-Workouts").performClick()
+        awaitTag("template-card-Push Day A")
     }
 
     private fun type(tag: String, text: String) {
@@ -79,6 +82,24 @@ class ScreenTest {
             compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true)
                 .fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    // Dropdown items live in a popup that is composed a frame or more after the menu button click,
+    // so the item has to be awaited before it can be clicked or asserted on.
+    private fun awaitMenuItem(text: String) {
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun clickMenuItem(text: String) {
+        awaitMenuItem(text)
+        compose.onNodeWithText(text).performClick()
+    }
+
+    private fun clickMenuTag(tag: String) {
+        awaitTag(tag)
+        compose.onNodeWithTag(tag).performClick()
     }
 
     @Test
@@ -134,6 +155,47 @@ class ScreenTest {
     }
 
     @Test
+    fun templateDraftSurvivesActivityRecreation() {
+        openWorkouts()
+        compose.onNodeWithTag("new-template").performClick()
+        type("template-name", "Rotate Probe")
+        addExercise("Bench", "Bench Press")
+        addExercise("Cable Fly", "Cable Fly")
+
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("screen-TemplateEditor").assertIsDisplayed()
+        compose.onNodeWithTag("template-name").assertTextContains("Rotate Probe")
+        compose.onNodeWithTag("draft-Bench Press").assertExists()
+        compose.onNodeWithTag("draft-Cable Fly").assertExists()
+    }
+
+    @Test
+    fun existingTemplateEditsSurviveActivityRecreation() {
+        openWorkouts()
+        compose.onNodeWithTag("segmented-My templates").performClick()
+        compose.onNodeWithTag("new-template").performClick()
+        type("template-name", "Edit Probe")
+        addExercise("Bench", "Bench Press")
+        compose.onNodeWithTag("save-template").performClick()
+        awaitTag("template-card-Edit Probe")
+
+        compose.onNodeWithTag("template-menu-Edit Probe").performClick()
+        clickMenuItem("Edit template")
+        awaitTag("draft-Bench Press")
+        addExercise("Cable Fly", "Cable Fly")
+
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("screen-TemplateEditor").assertIsDisplayed()
+        compose.onNodeWithTag("template-name").assertTextContains("Edit Probe")
+        compose.onNodeWithTag("draft-Bench Press").assertExists()
+        compose.onNodeWithTag("draft-Cable Fly").assertExists()
+    }
+
+    @Test
     fun templateValidationBlocksBadInput() {
         openWorkouts()
         compose.onNodeWithTag("new-template").performClick()
@@ -154,9 +216,19 @@ class ScreenTest {
     }
 
     @Test
+    fun exercisePickerRowsMeetThe48dpTouchTarget() {
+        openWorkouts()
+        compose.onNodeWithTag("new-template").performClick()
+        compose.onNodeWithTag("add-exercise").performClick()
+        awaitTag("picker-Bench Press")
+        compose.onNodeWithTag("picker-Bench Press").assertHeightIsAtLeast(48.dp)
+    }
+
+    @Test
     fun premadeIsReadOnlyAndDuplicates() {
         openWorkouts()
         compose.onNodeWithTag("template-menu-Push Day A").performClick()
+        awaitMenuItem("Duplicate template")
         compose.onNodeWithText("Edit template").assertDoesNotExist()
         compose.onNodeWithText("Delete template").assertDoesNotExist()
         compose.onNodeWithText("Duplicate template").performClick()
@@ -170,7 +242,7 @@ class ScreenTest {
     fun customExerciseEditsAndArchives() {
         openWorkouts()
         compose.onNodeWithTag("workouts-menu").performClick()
-        compose.onNodeWithTag("open-library").performClick()
+        clickMenuTag("open-library")
         compose.onNodeWithTag("screen-Library").assertIsDisplayed()
 
         compose.onNodeWithTag("new-exercise").performClick()
@@ -184,7 +256,7 @@ class ScreenTest {
         compose.onNodeWithTag("custom-badge-Belt Squat").assertExists()
 
         compose.onNodeWithTag("exercise-menu-Belt Squat").performClick()
-        compose.onNodeWithText("Edit exercise").performClick()
+        clickMenuItem("Edit exercise")
         compose.onNodeWithTag("screen-ExerciseEditor").assertIsDisplayed()
         type("exercise-name", "Belt Squat Machine")
         compose.onNodeWithTag("save-exercise").performScrollTo().performClick()
@@ -192,7 +264,7 @@ class ScreenTest {
 
         compose.onNodeWithTag("exercise-row-Belt Squat Machine").assertExists()
         compose.onNodeWithTag("exercise-menu-Belt Squat Machine").performClick()
-        compose.onNodeWithText("Archive exercise").performClick()
+        clickMenuItem("Archive exercise")
         compose.onNodeWithTag("exercise-row-Belt Squat Machine").assertDoesNotExist()
     }
 
@@ -200,7 +272,7 @@ class ScreenTest {
     fun deletingReferencedExerciseOffersArchive() {
         openWorkouts()
         compose.onNodeWithTag("workouts-menu").performClick()
-        compose.onNodeWithTag("open-library").performClick()
+        clickMenuTag("open-library")
         compose.onNodeWithTag("new-exercise").performClick()
         type("exercise-name", "Belt Squat")
         compose.onNodeWithTag("muscle-Quads").performClick()
@@ -216,9 +288,9 @@ class ScreenTest {
         compose.onNodeWithTag("save-template").performClick()
 
         compose.onNodeWithTag("workouts-menu").performClick()
-        compose.onNodeWithTag("open-library").performClick()
+        clickMenuTag("open-library")
         compose.onNodeWithTag("exercise-menu-Belt Squat").performClick()
-        compose.onNodeWithText("Delete exercise").performClick()
+        clickMenuItem("Delete exercise")
         compose.onNodeWithText("Used in a template").assertExists()
         compose.onNodeWithTag("confirm-archive").performClick()
         compose.waitUntil(5_000) {

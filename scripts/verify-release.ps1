@@ -75,7 +75,7 @@ try {
     Require ($LASTEXITCODE -eq 0) 'Signed release build failed. See app/build/release-check/signed-build.log'
     $build = Get-Content (Join-Path $evidence 'signed-build.log') -Raw
     Require ($build -match '> Task :app:minifyReleaseWithR8\s') 'R8 did not run'
-    Require ($build -match '> Task :app:shrinkReleaseRes\s') 'Resource shrinking did not run'
+    Require ($build -match '> Task :app:(shrinkReleaseRes|optimizeReleaseResources)\s') 'Resource shrinking did not run'
     $apk = Join-Path $repo 'app\build\outputs\apk\release\app-release.apk'
     Require (Test-Path $apk) 'Signed release APK is missing'
 
@@ -87,7 +87,7 @@ try {
     $badging = & (Join-Path $tools 'aapt.exe') dump badging $apk
     Require ($LASTEXITCODE -eq 0) 'Could not inspect APK metadata'
     $metadata = $badging | Out-String
-    Require ($metadata -match "package: name='com.buhat.tracker' versionCode='1' versionName='1.0.0'") 'Wrong package or release version'
+    Require ($metadata -match "package: name='com.buhat.tracker' versionCode='2' versionName='1.0.0'") 'Wrong package or release version'
     Require ($metadata -match "sdkVersion:'26'") 'Wrong minimum SDK'
     Require ($metadata -match "targetSdkVersion:'35'") 'Wrong target SDK'
     Require ($metadata -notmatch 'application-debuggable') 'Release is debuggable'

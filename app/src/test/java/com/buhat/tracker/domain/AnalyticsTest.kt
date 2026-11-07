@@ -116,6 +116,39 @@ class AnalyticsTest {
     }
 
     @Test
+    fun homeClockStaysAtTheCollectionSnapshotWithoutSessions() {
+        assertEquals(NOW, homeAnalyticsNow(NOW, null))
+    }
+
+    @Test
+    fun homeClockFollowsASessionThatFinishedJustAfterTheSnapshot() {
+        assertEquals(NOW + 60_000L, homeAnalyticsNow(NOW, NOW + 60_000L))
+    }
+
+    @Test
+    fun homeClockFollowsASessionUpToOneDayAheadIncludingTheBoundary() {
+        assertEquals(NOW + DAY - 1, homeAnalyticsNow(NOW, NOW + DAY - 1))
+        assertEquals(NOW + DAY, homeAnalyticsNow(NOW, NOW + DAY))
+    }
+
+    @Test
+    fun homeClockStopsAFarFutureSessionAtOneDay() {
+        assertEquals(NOW + DAY, homeAnalyticsNow(NOW, NOW + 30 * DAY))
+        // A session older than the snapshot never moves the clock backwards.
+        assertEquals(NOW, homeAnalyticsNow(NOW, NOW - DAY))
+
+        // The recent session keeps its four-week stats while the far-future row stays out of them.
+        val history = listOf(
+            session("recent", NOW - DAY, "squat" to listOf(set("r", 100.0, 5, at = 1))),
+            session("future", NOW + 30 * DAY, "squat" to listOf(set("f", 200.0, 5, at = 2))),
+        )
+        val stats = fourWeekStats(history, homeAnalyticsNow(NOW, NOW + 30 * DAY))
+        assertEquals(1.0, stats.workouts.current, 0.0)
+        assertEquals(1.0, stats.workingSets.current, 0.0)
+        assertEquals(500.0, stats.volumeKg.current, 0.0)
+    }
+
+    @Test
     fun deltaIsNullWhenPreviousWindowIsEmpty() {
         val history = listOf(
             session("current", NOW, "squat" to listOf(set("c", 100.0, 5, at = 1))),
@@ -221,5 +254,54 @@ class AnalyticsTest {
         assertEquals(listOf(35L * DAY, now), e1rmTrend(history, "bench", 365, now).map { it.atMillis })
         assertEquals(setOf("record"), prSetIds(history))
         assertEquals(setOf("edge-set", "tie"), prSetIds(history.drop(1)))
+    }
+
+    @Test
+    fun windowAloneMarksItsFirstSetAsAPrAndTheSeedStopsIt() {
+        val now = 400L * DAY
+        val history = listOf(
+            session("old-record", now - HOME_WINDOW_DAYS * DAY - DAY, "squat" to listOf(set("record", 100.0, 5, at = 1))),
+            session("window", now - 5 * DAY, "squat" to listOf(set("window-first", 80.0, 5, at = 2))),
+        )
+        val window = history.filter { it.finishedAt >= homeWindowStart(now) }
+        val seed = mapOf("squat" to e1rm(100.0, 5)!!)
+
+        assertEquals(setOf("window-first"), prSetIds(window))
+        assertEquals(emptySet<String>(), prSetIds(window, seed))
+    }
+
+    @Test
+    fun seededTieIsNotAPrAndOnlyAStrictlyGreaterSetIs() {
+        val seed = mapOf("bench" to e1rm(100.0, 5)!!)
+        val tie = listOf(session("tie", NOW, "bench" to listOf(set("tie-set", 100.0, 5, at = 1))))
+        val above = listOf(session("above", NOW, "bench" to listOf(set("above-set", 100.0, 6, at = 2))))
+
+        assertEquals(emptySet<String>(), prSetIds(tie, seed))
+        assertEquals(setOf("above-set"), prSetIds(above, seed))
+    }
+
+    @Test
+    fun windowPlusSeedEqualsTheFullHistoryStats() {
+        val now = 400L * DAY
+        val full = listOf(
+            session("old-record", 30L * DAY, "bench" to listOf(set("record", 100.0, 6, at = 1))),
+            session("old-prior", 60L * DAY, "bench" to listOf(set("prior", 90.0, 8, at = 2))),
+            session("old-edge", now - HOME_WINDOW_DAYS * DAY, "squat" to listOf(set("edge", 80.0, 10, at = 3))),
+            session(
+                "current", now,
+                "bench" to listOf(set("current-tie", 100.0, 6, at = 4), set("current-pr", 105.0, 5, at = 5)),
+            ),
+            session("current-squat", now, "squat" to listOf(set("squat-pr", 200.0, 5, at = 6))),
+            session("future", now + DAY, "bench" to listOf(set("future", 500.0, 1, at = 7))),
+        )
+        val window = full.filter { it.finishedAt in homeWindowStart(now)..now }
+        val seed = full.filter { it.finishedAt < priorWindowStart(now) }
+            .flatMap { session -> session.exercises.flatMap { exercise -> exercise.sets.map { exercise.exerciseId to it } } }
+            .filter { (_, set) -> set.setType.countsForProgression }
+            .mapNotNull { (exerciseId, set) -> e1rm(set.weightKg, set.reps)?.let { exerciseId to it } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { it.value.max() }
+
+        assertEquals(fourWeekStats(full, now), fourWeekStats(window, now, seed))
     }
 }

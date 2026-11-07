@@ -143,7 +143,11 @@ fun SettingsScreen(
 
                 BuhatCard(Modifier.testTag("settings-units")) {
                     SectionTitle("Units")
-                    Text("Weight steps stay 2.5 kg. Height stays in cm.", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = "Weight steps are 2.5 kg. Example: 135 lb shows as 61.2 kg.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     BuhatSegmentedControl(
                         options = listOf("kg", "lb"),
                         selectedIndex = WeightUnit.entries.indexOf(currentSettings.unit),

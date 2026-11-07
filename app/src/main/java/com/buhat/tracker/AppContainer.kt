@@ -37,7 +37,9 @@ class AppContainer(private val context: Context, private val inMemory: Boolean =
     val database: BuhatDatabase = if (inMemory) {
         Room.inMemoryDatabaseBuilder(context, BuhatDatabase::class.java).build()
     } else {
-        Room.databaseBuilder(context, BuhatDatabase::class.java, "buhat.db").build()
+        Room.databaseBuilder(context, BuhatDatabase::class.java, "buhat.db")
+            .addMigrations(BuhatDatabase.MIGRATION_1_2)
+            .build()
     }
     val repository = BuhatRepository(database, settingsStore, profileStore)
     val restTimer = RestTimer(context, settingsStore)

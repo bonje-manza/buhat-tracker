@@ -55,7 +55,7 @@ android {
         applicationId = "com.buhat.tracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = 2
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -70,6 +70,7 @@ android {
         buildConfig = true
     }
     sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 
     signingConfigs {
         create("release") {
@@ -88,6 +89,18 @@ android {
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+        }
+    }
+
+    testOptions {
+        managedDevices {
+            localDevices {
+                create("pixel6api35") {
+                    device = "Pixel 6"
+                    apiLevel = 35
+                    systemImageSource = "aosp"
+                }
+            }
         }
     }
 }
@@ -126,6 +139,7 @@ dependencies {
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.01.00"))
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.room:room-testing:2.7.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }

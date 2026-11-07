@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -25,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,6 +53,28 @@ private data class DraftRow(
     val rir: String,
 )
 
+private const val DRAFT_ROW_FIELDS = 6
+
+private val DraftRowsSaver = listSaver<List<DraftRow>, String>(
+    save = { rows ->
+        rows.flatMap {
+            listOf(it.exerciseId, it.exerciseName, it.sets, it.repMin, it.repMax, it.rir)
+        }
+    },
+    restore = { values ->
+        values.chunked(DRAFT_ROW_FIELDS).map {
+            DraftRow(
+                exerciseId = it[0],
+                exerciseName = it[1],
+                sets = it[2],
+                repMin = it[3],
+                repMax = it[4],
+                rir = it[5],
+            )
+        }
+    },
+)
+
 @Composable
 fun TemplateEditorScreen(
     repository: BuhatRepository,
@@ -61,15 +85,17 @@ fun TemplateEditorScreen(
     val library by remember(repository) { repository.exercises() }
         .collectAsState(emptyList())
     var name by rememberSaveable { mutableStateOf("") }
-    var rows by remember { mutableStateOf<List<DraftRow>>(emptyList()) }
-    var loading by remember { mutableStateOf(!isNew) }
+    var rows by rememberSaveable(stateSaver = DraftRowsSaver) {
+        mutableStateOf<List<DraftRow>>(emptyList())
+    }
+    var loaded by rememberSaveable { mutableStateOf(isNew) }
     var error by remember { mutableStateOf<String?>(null) }
     var pickerOpen by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(templateId) {
-        if (!isNew) {
+        if (!isNew && !loaded) {
             repository.loadTemplateDraft(templateId!!)?.let { draft ->
                 name = draft.name
                 rows = draft.exercises.map {
@@ -83,7 +109,7 @@ fun TemplateEditorScreen(
                     )
                 }
             }
-            loading = false
+            loaded = true
         }
     }
 
@@ -112,7 +138,7 @@ fun TemplateEditorScreen(
                 .verticalScroll(rememberScrollState())
                 .testTag("screen-TemplateEditor"),
         ) {
-            if (loading) {
+            if (!loaded) {
                 Text("Loading...", modifier = Modifier.padding(24.dp))
                 return@Column
             }
@@ -280,6 +306,7 @@ private fun ExercisePicker(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .clickable { onPick(exercise) }
                         .testTag("picker-${exercise.name}")
                         .padding(vertical = 12.dp),

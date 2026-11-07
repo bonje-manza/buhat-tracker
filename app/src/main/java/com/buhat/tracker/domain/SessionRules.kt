@@ -24,7 +24,7 @@ fun renumberWorkingSets(sets: List<LoggedSetRecord>): List<LoggedSetRecord> {
 }
 
 fun validateSet(weightKg: Double, reps: Int, rir: Int?): String? = when {
-    weightKg < 0.0 || weightKg > 1000.0 -> "Weight must be 0 to 1000 kg."
+    !weightKg.isFinite() || weightKg < 0.0 || weightKg > 1000.0 -> "Weight must be 0 to 1000 kg."
     reps < 0 || reps > 100 -> "Reps must be 0 to 100."
     rir != null && (rir < 0 || rir > 5) -> "RIR must be 0 to 5."
     else -> null

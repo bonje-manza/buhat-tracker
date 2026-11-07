@@ -95,6 +95,9 @@ class RestPermissionTest {
         }
 
         compose.waitUntil(5_000) { requests.get() == 1 }
+        compose.waitUntil(5_000) {
+            runBlocking { app.container.settingsStore.notificationPermissionRequested.first() }
+        }
         assertTrue(runBlocking { app.container.settingsStore.notificationPermissionRequested.first() })
         compose.runOnIdle { visible.value = false }
         compose.waitForIdle()

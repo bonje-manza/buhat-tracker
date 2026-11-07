@@ -24,6 +24,26 @@ class BackupTest {
     }
 
     @Test
+    fun `the export size guard accepts the limit and rejects one byte more`() {
+        requireBackupFits(0)
+        requireBackupFits(MAX_BACKUP_BYTES - 1)
+        requireBackupFits(MAX_BACKUP_BYTES)
+
+        val error = assertThrows(BackupException::class.java) { requireBackupFits(MAX_BACKUP_BYTES + 1) }
+
+        assertEquals("This backup is larger than 20 MB. Export is not possible.", error.message)
+    }
+
+    @Test
+    fun `the export size guard honours an injected limit`() {
+        requireBackupFits(10, maxBytes = 10)
+
+        val error = assertThrows(BackupException::class.java) { requireBackupFits(11, maxBytes = 10) }
+
+        assertEquals("This backup is larger than 20 MB. Export is not possible.", error.message)
+    }
+
+    @Test
     fun `a valid backup round trips every row`() {
         val decoded = decodeBackup(encodeBackup(validBackup()))
 

@@ -74,6 +74,7 @@ data class TemplateExercise(
     indices = [
         Index("status"),
         Index("finishedAt"),
+        Index(value = ["status", "finishedAt"], name = "index_WorkoutSession_status_finishedAt"),
     ],
 )
 data class WorkoutSession(
@@ -101,6 +102,7 @@ enum class WorkoutStatus { ACTIVE, FINISHED }
     indices = [
         Index("sessionId"),
         Index(value = ["sessionId", "position"], unique = true),
+        Index(value = ["exerciseId", "sessionId"], name = "index_SessionExercise_exerciseId_sessionId"),
     ],
 )
 data class SessionExercise(

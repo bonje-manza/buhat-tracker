@@ -70,6 +70,7 @@ class ProgressScreenTest {
 
     @Test fun loggedWorkoutFeedsDashboardHistoryAndConfirmedDeletion() {
         compose.onNodeWithTag("tab-Workouts").performClick()
+        awaitTag("start-workout-Push Day A")
         compose.onNodeWithTag("start-workout-Push Day A").performClick()
         awaitTag("weight-input")
         var logged = 0
@@ -116,6 +117,12 @@ class ProgressScreenTest {
         homeValue("home-volume-value", "0 kg")
         homeValue("home-workouts-value", "0")
         compose.onNodeWithText("No workouts yet", useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun homeStrengthCardCarriesTheDesignEstimatedOneRepMaxLabel() {
+        runBlocking { container.recordBenchWorkout() }
+        awaitValue("home-trend-latest", "106.7 kg")
+        compose.onNodeWithText("Est. 1RM", useUnmergedTree = true).assertExists()
     }
 
     @Test fun rangesUseAllTimePrsAndDeletingTheRecordRecalculatesBadges() {

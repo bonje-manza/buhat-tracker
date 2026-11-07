@@ -8,6 +8,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.core.view.WindowCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -70,6 +72,24 @@ class SettingsScreenTest {
         compose.waitUntil(5_000) {
             compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    @Test
+    fun doubleTappingSaveProfileStaysOnHome() {
+        compose.onNodeWithTag("profile-card").performClick()
+        awaitTag("profile-name")
+        type("profile-name", "Alex")
+        compose.onNodeWithTag("save-profile").performTouchInput { doubleClick() }
+        awaitTag("screen-Home")
+        compose.onNodeWithTag("screen-Home").assertIsDisplayed()
+        awaitText("profile-card-name", "Alex")
+        assertEquals(
+            "Alex",
+            runBlocking {
+                ApplicationProvider.getApplicationContext<BuhatApplication>()
+                    .container.profileStore.profile.first().name
+            },
+        )
     }
 
     @Test
@@ -135,8 +155,18 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun unitsCardUsesTheDesignExampleCopy() {
+        compose.onNodeWithTag("settings-button").performClick()
+        awaitTag("settings-units")
+        compose.onNodeWithText("Weight steps are 2.5 kg. Example: 135 lb shows as 61.2 kg.")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun exportAndImportAreDisabledWhileASessionIsActive() {
         compose.onNodeWithTag("tab-Workouts").performClick()
+        awaitTag("start-workout-Push Day A")
         compose.onNodeWithTag("start-workout-Push Day A").performClick()
         compose.onNodeWithTag("tab-Home").performClick()
         compose.onNodeWithTag("settings-button").performClick()

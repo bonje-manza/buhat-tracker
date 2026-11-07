@@ -1,4 +1,4 @@
-# Full E2E run for Buhat: JDK 21 + device gate, isolated data, unit + data + UI suite.
+# Full E2E run for Buhat: JDK 21 + managed emulator, isolated data, unit + data + UI suite.
 # Run from anywhere:  powershell -NoProfile -ExecutionPolicy Bypass -File .opencode/skills/e2e-testing/scripts/run-e2e.ps1
 [CmdletBinding()]
 param(
@@ -7,16 +7,12 @@ param(
     [string]$Layer = 'all',
 
     # Device test class or class#method, e.g. com.buhat.tracker.TabNavigationTest
-    [string]$Feature = '',
-
-    # Skip adb pm clear. Only for fast iteration; never for the final run.
-    [switch]$KeepData
+    [string]$Feature = ''
 )
 
 # 'Continue' on purpose: Gradle writes failures to stderr, and PS 5.1 turns native stderr
 # into a terminating error under 'Stop'. Exit codes are checked explicitly instead.
 $ErrorActionPreference = 'Continue'
-$AppId = 'com.buhat.tracker'
 $repo = (Resolve-Path $PSScriptRoot).Path
 while ($repo -and -not (Test-Path (Join-Path $repo 'gradlew.bat'))) {
     $parent = Split-Path $repo -Parent
@@ -39,39 +35,20 @@ function Use-Jdk21 {
 }
 Use-Jdk21
 
-$adb = Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe'
-if (-not (Test-Path $adb)) { $adb = (Get-Command adb -ErrorAction SilentlyContinue).Source }
-if (-not $adb) { throw "adb not found. Install Android platform-tools." }
-
-# --- Device gate. A locked phone fails every Compose test with 'No compose hierarchies found'. ---
+# --- Managed-device gate. Gradle provisions the emulator; no phone or adb targeting. ---
 if ($Layer -ne 'unit') {
-    $deviceLine = (& $adb devices) | Where-Object { $_ -match '\sdevice\s*$' } | Select-Object -First 1
-    if (-not $deviceLine) { throw "No device ready. Plug in the test phone, accept the debugging prompt, rerun. adb output:`n$(& $adb devices)" }
-    $serial = ($deviceLine -split '\s+')[0]
-
-    & $adb -s $serial shell input keyevent KEYCODE_WAKEUP 2>&1 | Out-Null
-    & $adb -s $serial shell wm dismiss-keyguard 2>&1 | Out-Null
-    # Test phone is 1080x2340; swipe up to clear a simple keyguard.
-    & $adb -s $serial shell input swipe 540 2000 540 500 200 2>&1 | Out-Null
-    Start-Sleep -Milliseconds 800
-    $window = (& $adb -s $serial shell dumpsys window) | Out-String
-    if ($window -match 'mDreamingLockscreen=true') {
-        throw "Phone $serial is locked. Unlock it by hand, then rerun."
+    $emulator = Join-Path $env:LOCALAPPDATA 'Android\Sdk\emulator\emulator.exe'
+    if (-not (Test-Path $emulator)) {
+        throw "Android Emulator not installed. Android Studio > SDK Manager > SDK Tools > Android Emulator, then rerun."
     }
-
-    if ($KeepData) {
-        Write-Host "Keeping app data on $serial (-KeepData)."
-    }
-    else {
-        Write-Host "Clearing $AppId data on $serial. Any real training log on this phone is lost."
-        & $adb -s $serial shell pm clear $AppId 2>&1 | Out-Null
-    }
+    Write-Host 'Device layer: Gradle-managed Pixel 6 / API 35 (clean snapshot per run).'
 }
 
 # --- Stale result XML would pollute the counts. ---
 foreach ($dir in @(
         (Join-Path $repo 'app\build\test-results\testDebugUnitTest'),
-        (Join-Path $repo 'app\build\outputs\androidTest-results\connected\debug'))) {
+        (Join-Path $repo 'app\build\outputs\androidTest-results\managedDevice\debug'),
+        (Join-Path $repo 'app\build\reports\androidTests\managedDevice'))) {
     if (Test-Path $dir) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
@@ -86,8 +63,9 @@ if ($Layer -ne 'device') {
 }
 
 if ($Layer -ne 'unit') {
-    Write-Host "`n== device tests (Room + Compose) ==" -ForegroundColor Cyan
-    $gradleArgs = @('connectedDebugAndroidTest', '--console=plain')
+    Write-Host "`n== device tests (Room + Compose on the managed emulator) ==" -ForegroundColor Cyan
+    # --rerun is required: managed-device results are cached, and the counts must reflect this run.
+    $gradleArgs = @('pixel6api35DebugAndroidTest', '--console=plain', '--rerun')
     if ($Feature) { $gradleArgs += "-Pandroid.testInstrumentationRunnerArguments.class=$Feature" }
     & $gradlew @gradleArgs
     if ($LASTEXITCODE -ne 0) { $failedLayers += 'device' }
@@ -95,24 +73,27 @@ if ($Layer -ne 'unit') {
 }
 
 # --- Counts. Gradle returns success on NO-SOURCE, which is not a pass. ---
-function Get-ResultCounts([string[]]$Paths) {
+function Get-ResultCounts([string[]]$Dirs) {
     $tests = 0
     $bad = 0
-    foreach ($path in $Paths) {
-        foreach ($file in (Get-ChildItem -Path $path -ErrorAction SilentlyContinue)) {
-            try { $xml = [xml](Get-Content $file.FullName -Raw) } catch { continue }
+    $skipped = 0
+    $parseErrors = 0
+    foreach ($dir in $Dirs) {
+        foreach ($file in (Get-ChildItem -Path $dir -Recurse -Filter 'TEST-*.xml' -ErrorAction SilentlyContinue)) {
+            try { $xml = [xml](Get-Content $file.FullName -Raw) } catch { $parseErrors++; continue }
             $suites = if ($xml.testsuite) { @($xml.testsuite) } elseif ($xml.testsuites) { @($xml.testsuites.testsuite) } else { @() }
             foreach ($suite in $suites) {
                 $tests += [int]$suite.tests
                 $bad += [int]$suite.failures + [int]$suite.errors
+                $skipped += [int]$suite.skipped
             }
         }
     }
-    [pscustomobject]@{ Tests = $tests; Failed = $bad }
+    [pscustomobject]@{ Tests = $tests; Failed = $bad; Skipped = $skipped; ParseErrors = $parseErrors }
 }
 
-$unit = Get-ResultCounts @(Join-Path $repo 'app\build\test-results\testDebugUnitTest\TEST-*.xml')
-$device = Get-ResultCounts @(Join-Path $repo 'app\build\outputs\androidTest-results\connected\debug\TEST-*.xml')
+$unit = Get-ResultCounts @(Join-Path $repo 'app\build\test-results\testDebugUnitTest')
+$device = Get-ResultCounts @(Join-Path $repo 'app\build\outputs\androidTest-results\managedDevice\debug')
 
 # --- Security check: the app must not gain network access. ---
 $permission = 'not checked'
@@ -131,15 +112,17 @@ if ($Layer -ne 'unit') {
 
 # --- Summary ---
 $noTests = @()
-$skipped = @()
+$noSources = @()
 $unitSources = @(Get-ChildItem (Join-Path $repo 'app\src\test') -Recurse -Include '*.kt', '*.java' -ErrorAction SilentlyContinue).Count
 $deviceSources = @(Get-ChildItem (Join-Path $repo 'app\src\androidTest') -Recurse -Include '*.kt', '*.java' -ErrorAction SilentlyContinue).Count
-if (('unit' -in $ranLayers) -and $unit.Tests -eq 0) { if ($unitSources -eq 0) { $skipped += 'unit' } else { $noTests += 'unit' } }
-if (('device' -in $ranLayers) -and $device.Tests -eq 0) { if ($deviceSources -eq 0) { $skipped += 'device' } else { $noTests += 'device' } }
+if (('unit' -in $ranLayers) -and $unit.Tests -eq 0) { if ($unitSources -eq 0) { $noSources += 'unit' } else { $noTests += 'unit' } }
+if (('device' -in $ranLayers) -and $device.Tests -eq 0) { if ($deviceSources -eq 0) { $noSources += 'device' } else { $noTests += 'device' } }
+$skippedTests = $unit.Skipped + $device.Skipped
+$parseErrors = $unit.ParseErrors + $device.ParseErrors
 
 Write-Host "`n== E2E summary ==" -ForegroundColor Cyan
-Write-Host ("unit    : {0} tests, {1} failed{2}" -f $unit.Tests, $unit.Failed, $(if ('unit' -in $skipped) { ' (no test sources yet)' } else { '' }))
-Write-Host ("device  : {0} tests, {1} failed{2}" -f $device.Tests, $device.Failed, $(if ('device' -in $skipped) { ' (no test sources yet)' } else { '' }))
+Write-Host ("unit    : {0} tests, {1} failed, {2} skipped{3}" -f $unit.Tests, $unit.Failed, $unit.Skipped, $(if ('unit' -in $noSources) { ' (no test sources yet)' } else { '' }))
+Write-Host ("device  : {0} tests, {1} failed, {2} skipped{3}" -f $device.Tests, $device.Failed, $device.Skipped, $(if ('device' -in $noSources) { ' (no test sources yet)' } else { '' }))
 Write-Host ("INTERNET permission: {0}" -f $permission)
 
 if ($noTests.Count -gt 0) {
@@ -147,6 +130,14 @@ if ($noTests.Count -gt 0) {
     $failedLayers += 'empty'
 }
 if ($Feature -and $device.Tests -eq 0) { $failedLayers += 'filter' }
+if ($skippedTests -gt 0) {
+    Write-Host ("SKIPPED TESTS: {0}. Not a pass." -f $skippedTests) -ForegroundColor Yellow
+    $failedLayers += 'skipped'
+}
+if ($parseErrors -gt 0) {
+    Write-Host ("UNREADABLE RESULT XML: {0} file(s). Not a pass." -f $parseErrors) -ForegroundColor Yellow
+    $failedLayers += 'parse'
+}
 
 if ($failedLayers.Count -gt 0) {
     Write-Host ("RESULT: FAIL ({0})" -f (($failedLayers | Select-Object -Unique) -join ', ')) -ForegroundColor Red

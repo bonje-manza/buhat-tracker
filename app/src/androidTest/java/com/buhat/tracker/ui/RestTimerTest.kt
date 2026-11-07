@@ -64,8 +64,9 @@ class RestTimerTest {
 
     private fun startPushDayA() {
         compose.onNodeWithTag("tab-Workouts").performClick()
+        awaitTag("start-workout-Push Day A")
         compose.onNodeWithTag("start-workout-Push Day A").performClick()
-        awaitTag("screen-Active")
+        awaitTag("weight-input")
     }
 
     private fun logWorkingSet() {
@@ -337,6 +338,7 @@ class RestTimerTest {
         }
 
         compose.onNodeWithTag("tab-Workouts").performClick()
+        awaitTag("start-workout-Pull Day A")
         compose.onNodeWithTag("start-workout-Pull Day A").performClick()
         awaitText("Workout in progress")
         runBlocking {

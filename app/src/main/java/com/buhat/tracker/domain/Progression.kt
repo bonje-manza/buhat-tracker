@@ -53,7 +53,7 @@ fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int, unit: WeightU
 
     if (source.weightKg <= 0.0) {
         val reps = minOf(source.reps + 1, repMax)
-        return ProgressionTarget(0.0, reps, "Beat $reps reps.")
+        return ProgressionTarget(0.0, reps, "Beat ${source.reps} reps.")
     }
 
     if (source.reps >= repMax) {
@@ -68,7 +68,7 @@ fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int, unit: WeightU
     return ProgressionTarget(
         weightKg = source.weightKg,
         reps = reps,
-        message = "Beat $reps reps at ${formatWeight(source.weightKg, unit)}.",
+        message = "Beat ${source.reps} reps at ${formatWeight(source.weightKg, unit)}.",
     )
 }
 

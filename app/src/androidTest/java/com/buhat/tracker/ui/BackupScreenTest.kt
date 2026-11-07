@@ -18,6 +18,9 @@ import com.buhat.tracker.BuhatApplication
 import com.buhat.tracker.data.*
 import com.buhat.tracker.ui.screens.SettingsScreen
 import com.buhat.tracker.ui.theme.BuhatTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -42,7 +45,10 @@ class BackupScreenTest {
             .open("phase6-backup.json").bufferedReader().use { it.readText() }
         runBlocking { repo.importBackup(captured) }
         file = File(app.cacheDir, "screen-backup.json")
-        // Only substitute the system picker. The file, screen, codec and stores are real.
+    }
+
+    // Only substitute the system picker. The file, screen, codec and stores are real.
+    private fun startScreen(controller: BackupController = app.container.backupController) {
         val registry = object : ActivityResultRegistry() {
             override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I,
                 options: ActivityOptionsCompat?) {
@@ -57,7 +63,7 @@ class BackupScreenTest {
         val owner = object : ActivityResultRegistryOwner { override val activityResultRegistry = registry }
         restoration.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-                BuhatTheme { SettingsScreen(repo, app.container.backupController, onBack = {}, onOpenProfile = {}) }
+                BuhatTheme { SettingsScreen(repo, controller, onBack = {}, onOpenProfile = {}) }
             }
         }
     }
@@ -68,8 +74,16 @@ class BackupScreenTest {
     private fun awaitText(text: String) {
         compose.waitUntil(5_000) { compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
     }
+    private fun testController(
+        maxBackupBytes: Int = MAX_BACKUP_BYTES,
+        ioTimeoutMillis: Long = DEFAULT_IO_TIMEOUT_MILLIS,
+    ) = BackupController(
+        repo, app.container.restTimer, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        maxBackupBytes, ioTimeoutMillis,
+    )
 
     @Test fun fileRoundTripRequiresConfirmationAndReloadsProfile() {
+        startScreen()
         click("export-data")
         awaitText("Backup exported.")
         val exported = decodeBackup(file.readText())
@@ -98,6 +112,7 @@ class BackupScreenTest {
     }
 
     @Test fun invalidFilesAndCancelledPickerLeaveDataAlone() {
+        startScreen()
         val before = runBlocking { decodeBackup(repo.exportBackup()).copy(exportedAt = 1) }
         for ((text, message) in listOf(
             "{}" to "not a Buhat backup",
@@ -116,6 +131,7 @@ class BackupScreenTest {
     }
 
     @Test fun exportWriteFailureIsSpecificAndImportFailureIsVisibleInDialog() {
+        startScreen()
         file.mkdir()
         click("export-data")
         awaitText("Could not write the backup file")
@@ -132,6 +148,7 @@ class BackupScreenTest {
     }
 
     @Test fun importFailureAndRetrySurviveScreenRecreation() {
+        startScreen()
         file.writeText(captured)
         click("import-data")
         awaitText("Replace all local data?")
@@ -149,5 +166,34 @@ class BackupScreenTest {
         compose.onNodeWithTag("confirm-import").performClick()
         awaitText("Imported 1 exercises")
         assertEquals("Avery Kamp", runBlocking { repo.profileStore.profile.first().name })
+    }
+
+    @Test fun exportOverTheLimitFailsBeforeTouchingTheChosenFile() {
+        startScreen(testController(maxBackupBytes = 64))
+        file.writeText("keep me")
+        click("export-data")
+        awaitText("This backup is larger than 20 MB. Export is not possible.")
+        assertEquals("keep me", file.readText())
+        compose.onNodeWithTag("export-data").assertIsEnabled()
+    }
+
+    @Test fun timedOutExportReportsAndUnlocksTheScreen() {
+        startScreen(testController(ioTimeoutMillis = 0))
+        file.writeText("keep me")
+        click("export-data")
+        awaitText("The file operation took too long. Try again.")
+        assertEquals("keep me", file.readText())
+        compose.onNodeWithTag("backup-busy").assertDoesNotExist()
+        compose.onNodeWithTag("export-data").assertIsEnabled()
+    }
+
+    @Test fun timedOutImportReportsAndUnlocksTheScreen() {
+        startScreen(testController(ioTimeoutMillis = 0))
+        file.writeText(captured)
+        click("import-data")
+        awaitText("The file operation took too long. Try again.")
+        compose.onNodeWithTag("confirm-import").assertDoesNotExist()
+        compose.onNodeWithTag("backup-busy").assertDoesNotExist()
+        compose.onNodeWithTag("import-data").assertIsEnabled()
     }
 }

@@ -146,8 +146,13 @@ private const val NOT_A_BACKUP = "This file is not a Buhat backup."
 private const val CORRUPT = "This backup file is corrupt."
 private const val NEWER_VERSION = "This backup was made by a newer version of the app."
 private const val OUT_OF_RANGE = "This backup contains values outside the allowed range."
+private const val TOO_LARGE_TO_EXPORT = "This backup is larger than 20 MB. Export is not possible."
 
 fun encodeBackup(backup: Backup): String = backupJson.encodeToString(backup)
+
+fun requireBackupFits(byteCount: Int, maxBytes: Int = MAX_BACKUP_BYTES) {
+    if (byteCount > maxBytes) throw BackupException(TOO_LARGE_TO_EXPORT)
+}
 
 fun decodeBackup(text: String): Backup {
     val root = try {

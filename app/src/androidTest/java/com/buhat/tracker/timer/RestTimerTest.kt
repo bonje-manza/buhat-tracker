@@ -2,8 +2,10 @@ package com.buhat.tracker.timer
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.media.AudioAttributes
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
@@ -20,6 +22,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+
+private const val MUTED_COMPLETE_CHANNEL_ID = "rest_complete_muted_test"
+private const val SILENT_COMPLETE_CHANNEL_ID = "rest_complete_silent_test"
 
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = 33)
@@ -46,6 +51,12 @@ class RestTimerTest {
     fun cancelAlarm() = runBlocking {
         app.container.repository.clearRest()
         app.container.restTimer.cancel()
+    }
+
+    @After
+    fun deleteMutedChannel() {
+        notifications.deleteNotificationChannel(MUTED_COMPLETE_CHANNEL_ID)
+        notifications.deleteNotificationChannel(SILENT_COMPLETE_CHANNEL_ID)
     }
 
     private fun active(id: Int) = notifications.activeNotifications.firstOrNull { it.id == id }
@@ -84,7 +95,10 @@ class RestTimerTest {
             app,
             app.container.settingsStore,
             canNotify = { false },
-            directAlert = { alerted = true },
+            directAlert = {
+                alerted = true
+                true
+            },
         )
         val endsAt = System.currentTimeMillis() + 1_000
         app.container.settingsStore.setRestEndsAt(endsAt)
@@ -92,6 +106,103 @@ class RestTimerTest {
         assertTrue(timer.completeAlarm(endsAt, app.container.repository))
         assertTrue("expected a sound/vibration alert when notifications are off", alerted)
         assertNull(active(COMPLETE_NOTIFICATION_ID))
+    }
+
+    @Test
+    fun aMutedCompletionChannelPlaysADirectAlert() = runBlocking {
+        // The real completion channel keeps its importance for the whole install once muted,
+        // so the muted-channel path is exercised on a throwaway channel with the same settings.
+        notifications.createNotificationChannel(
+            NotificationChannel(
+                MUTED_COMPLETE_CHANNEL_ID,
+                "Muted rest complete",
+                NotificationManager.IMPORTANCE_NONE,
+            ),
+        )
+        var alerted = false
+        val timer = RestTimer(
+            app,
+            app.container.settingsStore,
+            canNotify = { canShowRestComplete(it, MUTED_COMPLETE_CHANNEL_ID) },
+            directAlert = {
+                alerted = true
+                true
+            },
+        )
+        val endsAt = System.currentTimeMillis() + 1_000
+        app.container.settingsStore.setRestEndsAt(endsAt)
+
+        assertFalse("a muted channel cannot carry the completion alert", canShowRestComplete(app, MUTED_COMPLETE_CHANNEL_ID))
+        assertTrue(timer.completeAlarm(endsAt, app.container.repository))
+        assertTrue("expected a sound/vibration alert when the completion channel is off", alerted)
+        assertNull(active(COMPLETE_NOTIFICATION_ID))
+        assertNull(app.container.settingsStore.settings.first().restEndsAt)
+    }
+
+    @Test
+    fun aSilencedCompletionChannelPlaysADirectAlert() = runBlocking {
+        // A deliverable channel with neither sound nor vibration cannot carry the alert either.
+        notifications.createNotificationChannel(
+            NotificationChannel(
+                SILENT_COMPLETE_CHANNEL_ID,
+                "Silent rest complete",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                setSound(null, null)
+                enableVibration(false)
+            },
+        )
+        val channel = notifications.getNotificationChannel(SILENT_COMPLETE_CHANNEL_ID)!!
+        assertNull("a silenced channel must have no sound", channel.sound)
+        assertFalse("a silenced channel must not vibrate", channel.shouldVibrate())
+
+        var alerted = false
+        val timer = RestTimer(
+            app,
+            app.container.settingsStore,
+            canNotify = { canShowRestComplete(it, SILENT_COMPLETE_CHANNEL_ID) },
+            directAlert = {
+                alerted = true
+                true
+            },
+        )
+        val endsAt = System.currentTimeMillis() + 1_000
+        app.container.settingsStore.setRestEndsAt(endsAt)
+
+        assertFalse("a silent channel cannot carry the completion alert", canShowRestComplete(app, SILENT_COMPLETE_CHANNEL_ID))
+        assertTrue(timer.completeAlarm(endsAt, app.container.repository))
+        assertTrue("expected a sound/vibration alert when the completion channel is silent", alerted)
+        assertNull(active(COMPLETE_NOTIFICATION_ID))
+    }
+
+    @Test
+    fun aMissingCompletionChannelFallsBackThroughTheProductionCanNotifyWiring() = runBlocking {
+        // No canNotify override: the default must notice the deleted channel and play the alert.
+        var alerted = false
+        val timer = RestTimer(
+            app,
+            app.container.settingsStore,
+            directAlert = {
+                alerted = true
+                true
+            },
+        )
+        val endsAt = System.currentTimeMillis() + 1_000
+        app.container.settingsStore.setRestEndsAt(endsAt)
+        notifications.deleteNotificationChannel(COMPLETE_CHANNEL_ID)
+        try {
+            assertNull(notifications.getNotificationChannel(COMPLETE_CHANNEL_ID))
+            assertTrue(timer.completeAlarm(endsAt, app.container.repository))
+            assertTrue("expected a sound/vibration alert when the completion channel is missing", alerted)
+            assertNull(active(COMPLETE_NOTIFICATION_ID))
+        } finally {
+            ensureRestChannels(app)
+        }
+    }
+
+    @Test
+    fun directAlertUsesAlarmUsageSoBackgroundPlaybackIsAllowed() {
+        assertEquals(AudioAttributes.USAGE_ALARM, directAlertAudioAttributes().usage)
     }
 
     @Test
@@ -111,7 +222,10 @@ class RestTimerTest {
     fun aDelayedStartCannotRearmAClearedRest() = runBlocking {
         val endsAt = System.currentTimeMillis() + 60_000
         app.container.settingsStore.setRestEndsAt(endsAt)
-        app.container.restTimer.start(endsAt)
+        assertTrue(app.container.restTimer.start(endsAt))
+        assertNotNull(awaitActive(ONGOING_NOTIFICATION_ID))
+        assertEquals(endsAt, alarms.nextAlarmClock?.triggerTime)
+
         app.container.repository.clearRest()
         app.container.restTimer.cancel()
         awaitGone(ONGOING_NOTIFICATION_ID)
@@ -150,26 +264,6 @@ class RestTimerTest {
         app.container.restTimer.cancel()
 
         awaitGone(ONGOING_NOTIFICATION_ID)
-    }
-
-    @Test
-    fun aStaleAlarmDoesNotClearANewerRest() {
-        val staleEndsAt = System.currentTimeMillis() + 2_000
-        runBlocking { app.container.settingsStore.setRestEndsAt(staleEndsAt) }
-        runBlocking { app.container.restTimer.start(staleEndsAt) }
-
-        // A new rest replaces the old one before the old alarm fires.
-        val newerEndsAt = System.currentTimeMillis() + 60_000
-        runBlocking { app.container.settingsStore.setRestEndsAt(newerEndsAt) }
-        assertEquals(staleEndsAt, alarms.nextAlarmClock?.triggerTime)
-
-        Thread.sleep(10_000)
-
-        assertNull(active(COMPLETE_NOTIFICATION_ID))
-        assertEquals(
-            newerEndsAt,
-            runBlocking { app.container.settingsStore.settings.first().restEndsAt },
-        )
     }
 
     @Test

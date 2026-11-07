@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.buhat.tracker.data.BuhatRepository
+import com.buhat.tracker.data.ExerciseChoice
 import com.buhat.tracker.data.local.Exercise
 import com.buhat.tracker.domain.HistoryExercise
 import com.buhat.tracker.domain.HistorySession
@@ -73,7 +74,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
-private data class ProgressData(val history: List<HistorySession>, val exercises: List<Exercise>, val unit: WeightUnit)
+private data class ProgressData(
+    val choices: List<ExerciseChoice>,
+    val exercises: List<Exercise>,
+    val unit: WeightUnit,
+)
+
+private data class ExerciseHistory(val exerciseId: String, val sessions: List<HistorySession>)
 
 @Composable
 fun ProgressScreen(
@@ -84,18 +91,20 @@ fun ProgressScreen(
     onSelectRange: (Int) -> Unit,
 ) {
     var attempt by remember { mutableStateOf(0) }
-    var loadError by remember { mutableStateOf(false) }
+    var choicesFailed by remember { mutableStateOf(false) }
+    var historyFailed by remember { mutableStateOf(false) }
     @SuppressLint("ProduceStateDoesNotAssignValue") // Lint cannot see the assignment inside collect.
     val data by produceState<ProgressData?>(null, repository, attempt) {
-        loadError = false
+        choicesFailed = false
         try {
-            combine(repository.history(), repository.exercises(), repository.settingsStore.settings) { history, exercises, settings ->
-                ProgressData(history, exercises, settings.unit)
+            combine(repository.historyExerciseChoices(), repository.exercises(), repository.settingsStore.settings) {
+                    choices, exercises, settings ->
+                ProgressData(choices, exercises, settings.unit)
             }.collect { value = it }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            loadError = true
+            choicesFailed = true
         }
     }
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
@@ -106,25 +115,43 @@ fun ProgressScreen(
     var deleteError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val loaded = data
-    val history = loaded?.history.orEmpty()
     // Snapshots keep archived/deleted exercises selectable without consulting mutable library names.
-    val choices = remember(history, loaded?.exercises) {
-        (history.asReversed().flatMap { it.exercises }.map { it.exerciseId to it.exerciseNameSnapshot } +
+    val choices = remember(loaded) {
+        (loaded?.choices.orEmpty().map { it.exerciseId to it.exerciseName } +
             loaded?.exercises.orEmpty().map { it.id to it.name }).distinctBy { it.first }
     }
     // Prefer an exercise that has data when no explicit selection exists; skipped first exercises still stay pickable.
-    val loggedIds = remember(history) {
-        history.flatMap { it.exercises }.filter { it.sets.isNotEmpty() }.mapTo(HashSet()) { it.exerciseId }
+    val loggedIds = remember(loaded?.choices) {
+        loaded?.choices.orEmpty().filter { it.hasSets }.mapTo(HashSet()) { it.exerciseId }
     }
     val selected = choices.firstOrNull { it.first == selectedExerciseId }
         ?: choices.firstOrNull { it.first in loggedIds }
         ?: choices.firstOrNull()
     val exerciseId = selected?.first.orEmpty()
+    @SuppressLint("ProduceStateDoesNotAssignValue") // Lint cannot see the assignment inside collect.
+    val exerciseHistory by produceState<ExerciseHistory?>(null, repository, exerciseId, attempt) {
+        historyFailed = false
+        if (exerciseId.isEmpty()) {
+            value = ExerciseHistory("", emptyList())
+            return@produceState
+        }
+        try {
+            repository.historyForExercise(exerciseId).collect { value = ExerciseHistory(exerciseId, it) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            historyFailed = true
+        }
+    }
+    val loadError = choicesFailed || historyFailed
+    val historyRows = exerciseHistory?.takeIf { it.exerciseId == exerciseId }
+    val history = historyRows?.sessions.orEmpty()
     val unit = loaded?.unit ?: WeightUnit.KG
     val ranges = listOf("1M", "3M", "1Y", "All")
     val rangeDays = listOf(30, 90, 365, null)[rangeIndex]
     val now = System.currentTimeMillis()
     val summary = remember(history, exerciseId) { exerciseStats(history, exerciseId) }
+    // The loaded rows only hold the selected exercise, so these set ids are its all-time PRs.
     val prs = remember(history) { prSetIds(history) }
     val workouts = remember(history, exerciseId) {
         history.asReversed().filter { session -> session.exercises.any { it.exerciseId == exerciseId && it.sets.isNotEmpty() } }
@@ -144,7 +171,7 @@ fun ProgressScreen(
                 Text("Could not load progress.", color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = { attempt++ }, modifier = Modifier.testTag("progress-retry")) { Text("Retry") }
             }
-        } else if (loaded == null) {
+        } else if (loaded == null || historyRows == null) {
             item { Text("Loading...", modifier = Modifier.testTag("progress-loading")) }
         } else {
             item {

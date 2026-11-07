@@ -181,7 +181,7 @@ class ProgressionTest {
 
         assertEquals(0.0, belowTop.weightKg!!, 0.0)
         assertEquals(9, belowTop.reps)
-        assertEquals("Beat 9 reps.", belowTop.message)
+        assertEquals("Beat 8 reps.", belowTop.message)
         assertEquals(0.0, atTop.weightKg!!, 0.0)
         assertEquals(10, atTop.reps)
     }
@@ -201,7 +201,16 @@ class ProgressionTest {
 
         assertEquals(77.5, target.weightKg!!, 0.0)
         assertEquals(10, target.reps)
-        assertEquals("Beat 10 reps at 77.5 kg.", target.message)
+        assertEquals("Beat 9 reps at 77.5 kg.", target.message)
+    }
+
+    @Test
+    fun targetMessageReferencesTheSetBeingBeaten() {
+        val target = nextTarget(set("mid", weight = 70.0, reps = 8), repMin = 6, repMax = 10)
+
+        assertEquals(70.0, target.weightKg!!, 0.0)
+        assertEquals(9, target.reps)
+        assertEquals("Beat 8 reps at 70 kg.", target.message)
     }
 
     @Test

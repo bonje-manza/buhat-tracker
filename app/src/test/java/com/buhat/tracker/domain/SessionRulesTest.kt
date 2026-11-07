@@ -81,11 +81,19 @@ class SessionRulesTest {
 
     @Test
     fun validationRejectsOutOfRangeSetFields() {
+        assertNull(validateSet(weightKg = 0.0, reps = 0, rir = 0))
         assertNull(validateSet(weightKg = 1000.0, reps = 100, rir = 5))
         assertEquals("Weight must be 0 to 1000 kg.", validateSet(weightKg = 1000.5, reps = 8, rir = 2))
         assertEquals("Weight must be 0 to 1000 kg.", validateSet(weightKg = -1.0, reps = 8, rir = 2))
         assertEquals("Reps must be 0 to 100.", validateSet(weightKg = 80.0, reps = 101, rir = 2))
         assertEquals("RIR must be 0 to 5.", validateSet(weightKg = 80.0, reps = 8, rir = 6))
+    }
+
+    @Test
+    fun validationRejectsNonFiniteWeights() {
+        assertEquals("Weight must be 0 to 1000 kg.", validateSet(weightKg = Double.NaN, reps = 8, rir = 2))
+        assertEquals("Weight must be 0 to 1000 kg.", validateSet(weightKg = Double.POSITIVE_INFINITY, reps = 8, rir = 2))
+        assertEquals("Weight must be 0 to 1000 kg.", validateSet(weightKg = Double.NEGATIVE_INFINITY, reps = 8, rir = 2))
     }
 
     @Test

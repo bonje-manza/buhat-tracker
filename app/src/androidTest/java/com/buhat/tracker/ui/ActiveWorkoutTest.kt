@@ -50,8 +50,9 @@ class ActiveWorkoutTest {
 
     private fun startPushDayA() {
         compose.onNodeWithTag("tab-Workouts").performClick()
+        awaitTag("start-workout-Push Day A")
         compose.onNodeWithTag("start-workout-Push Day A").performClick()
-        awaitTag("screen-Active")
+        awaitTag("weight-input")
     }
 
     /** Captured fixture: the user's last Bench Press session was 80 kg for 10, 9, 8 reps. */
@@ -83,6 +84,12 @@ class ActiveWorkoutTest {
         compose.onNodeWithText("Ready for next set").assertIsDisplayed()
         compose.onNodeWithText("Starts automatically after each set").assertIsDisplayed()
         compose.onNodeWithTag("skip-rest").assertDoesNotExist()
+    }
+
+    @Test
+    fun loggingCardCarriesTheDesignRirHint() {
+        startPushDayA()
+        compose.onNodeWithText("RIR · 0 = failure, 1 = one more rep possible").assertExists()
     }
 
     @Test
@@ -149,6 +156,7 @@ class ActiveWorkoutTest {
         startPushDayA()
 
         compose.onNodeWithTag("tab-Workouts").performClick()
+        awaitTag("start-workout-Pull Day A")
         compose.onNodeWithTag("start-workout-Pull Day A").performClick()
 
         awaitText("Workout in progress")

@@ -17,16 +17,17 @@ So "backend" means the Room/DataStore/repository/domain layers and "frontend" me
 
 ## 1. Environment gate
 
-Run these checks before any test work. The locked-phone and JDK failures have already happened in this repo.
+Run these checks before any test work. The JDK-21 failure and the old locked-phone failure have already happened in this repo.
 
 | Need | Check | Fix |
 |---|---|---|
 | JDK 21 | `java -version` says 21 | `$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot'`. JDK 24 is the machine default; the build is only verified on 21. |
-| Device | `adb devices` lists `SM-S711W` as `device` | Reseat USB, accept the debugging prompt |
-| Unlocked screen | `adb shell dumpsys window` shows `mDreamingLockscreen=false` | Wake + swipe up. A locked phone fails every Compose test with `No compose hierarchies found in the app.` |
+| Android Emulator | `%LOCALAPPDATA%\Android\Sdk\emulator\emulator.exe` exists | Android Studio > SDK Manager > SDK Tools > Android Emulator |
+| Hardware acceleration | `emulator -accel-check` reports WHPX/AEHD available | Enable Windows Hypervisor Platform and reboot |
+| System image | The first device run downloads `system-images;android-35;default;x86_64` | `sdkmanager --licenses`, then rerun |
 | Build tools | `app/build` exists, `gradlew.bat` runs | `.\gradlew.bat --version` with the JDK 21 `JAVA_HOME` |
 
-The runner does all four. Prefer it over typing commands by hand.
+The runner checks the JDK and emulator install. Gradle provisions the managed Pixel 6 / API 35 device. Prefer the runner over typing commands by hand.
 
 ## 2. Isolation
 
@@ -34,12 +35,12 @@ The runner does all four. Prefer it over typing commands by hand.
 |---|---|---|---|---|
 | Unit | JVM, `app/src/test` | none | inline fixtures | none needed |
 | Data | device, `app/src/androidTest` | `Room.inMemoryDatabaseBuilder` | fixture seeders | new in-memory DB per test class |
-| UI | device, `app/src/androidTest` | in-memory via the app container test hook, or wiped app data | fixture seeders | `pm clear` before the run + `@Before` reset |
+| UI | managed emulator (Pixel 6, API 35), `app/src/androidTest` | in-memory via the app container test hook | fixture seeders | fresh managed-device snapshot per run + `@Before` reset |
 
 Hard rules:
 
 - No test opens the on-device file database. In-memory only.
-- The runner wipes `com.buhat.tracker` (`adb shell pm clear`) before device runs. That is the isolation boundary. It also destroys real training data on the phone, so export first when the phone holds a real log. `-KeepData` skips the wipe for fast iteration.
+- Gradle restores the managed device to a clean snapshot before each run. That is the isolation boundary. No phone, USB, or real training data is involved; the old `-KeepData` flag is gone.
 - There is no server and no API key, so "test keys only" reduces to: no network code, no key in a fixture, and no `INTERNET` permission in the merged manifest. The runner checks the permission on the debug APK.
 - One test-only hook is allowed in main code: `BuhatApplication.container.resetForTest()` (Phase 1+). It swaps in an in-memory database so a UI test starts from a known state. Nothing else test-only ships in `main`.
 
@@ -190,6 +191,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .opencode/skills/e2e-testing
 powershell -NoProfile -ExecutionPolicy Bypass -File .opencode/skills/e2e-testing/scripts/run-e2e.ps1 -Feature 'com.buhat.tracker.TabNavigationTest#tabsSwitchScreens'
 ```
 
+Each device run provisions the Gradle-managed Pixel 6 / API 35 emulator and runs `pixel6api35DebugAndroidTest --rerun`. The first run downloads the system image and creates the managed AVD; later runs reuse its snapshot and reset it to a clean state.
+
 The script prints each layer's test/failure counts, checks the `INTERNET` permission, and exits non-zero on any failure. `-Layer unit` and `-Layer device` exist to re-run one layer after a failure, never for a normal run.
 
 ## 7. Adding, keeping, and deleting tests
@@ -207,12 +210,14 @@ When to run: when a feature is complete, after a bug fix, before building a rele
 
 | Symptom | Cause | Action |
 |---|---|---|
-| `No compose hierarchies found in the app` | Phone locked or dozing | Wake, swipe up, rerun. Already the first thing the script checks |
+| Emulator fails to start, or the test task errors while booting | Missing acceleration or a GPU issue | Run `emulator -accel-check`. For rendering failures add `"-Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect"` |
+| System-image or license error | SDK license not accepted | `sdkmanager --licenses`, rerun |
+| `No compose hierarchies found in the app` | The app crashed before Compose rendered | Check logcat. A managed emulator is never locked |
 | `checksum` / `No matching variant` after a dependency edit | Stale Gradle cache | `.\gradlew.bat --stop` then rerun |
-| `NO-SOURCE` or `0 tests ran` | Test file is in the wrong source set (`src/test` vs `src/androidTest`) | Move it, rerun |
-| Old data shows up in a UI test | The `@Before` reset hook is missing | Add it; do not rely on the runner wipe for per-test state |
+| `NO-SOURCE` or `0 tests ran` | Wrong source set (`src/test` vs `src/androidTest`), or Gradle reused cached managed-device results | Move it. The runner passes `--rerun`; add it when running Gradle by hand |
+| Old data shows up in a UI test | The `@Before` reset hook is missing | Add it. The managed snapshot resets per run, not per test |
 | Test passes but the feature is wrong | Expected value was copied from the code | Recompute by hand, fix the literal |
-| Device test fails only on a second run | Data not cleared | Check `pm clear` output; do not use `-KeepData` for the final run |
+| Test fails only on a second run | Per-test state leaked | Check the `@Before` reset; the managed device resets per run |
 
 ## Common mistakes
 
@@ -220,5 +225,5 @@ When to run: when a feature is complete, after a bug fix, before building a rele
 - Asserting on a color or a chart pixel. Assert on the text summary the chart renders.
 - Adding a test for a case a user cannot reach (import during an active session is blocked by the UI, so test the guard, not the unreachable path).
 - Adding `Playwright`, `MockWebServer`, or a network stack. There is no server.
-- Treating a locked phone as a flaky test. It is an environment failure.
+- Running `connectedDebugAndroidTest` and expecting the managed emulator. That task uses whatever is plugged in. Use the runner or `pixel6api35DebugAndroidTest`.
 - Leaving a test that only checks framework behavior (Compose renders text). Delete it.

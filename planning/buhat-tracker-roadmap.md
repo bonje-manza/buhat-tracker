@@ -2,7 +2,7 @@
 
 ## 1. Status, goal, and success criteria
 
-**Status:** Phase 4 implementation is complete. The full suite (51 unit, 83 device) passes on the test phone. Physical lock-screen timing/sound/vibration, notification-denial, and airplane-mode acceptance checks remain before shipping Phase 4.
+**Status:** Phase 7 is complete. The signed versionCode 2 / versionName 1.0.0 release passes R8, resource shrinking, no-INTERNET, and backup-disabled checks. Automated suite: 74 unit, 124 device, 0 failed. Physical and owner acceptance checks pass on the signed release.
 
 **Goal:** A private, offline Android strength log for you and your friends. Each install owns its data. You train from premade or custom templates, log every set with weight, reps, RIR, and type, get per-set double-progression targets, run a rest timer, and review e1RM progress. Data moves by JSON export/import. Delivery is a signed APK.
 
@@ -61,7 +61,7 @@
 | Scope | All five designs in v1 | User-confirmed | Home, Workouts, Active, Progress, Settings all ship |
 | Progression | Per-set double progression | User-confirmed | Each set position advances independently. Focus on beating that set |
 | Distribution | Signed APK shared directly | User-confirmed | Small friend group. No store review or account |
-| Test target | Physical phone over USB | User-confirmed | Real timer, vibration, lock-screen, and touch behavior |
+| Test target | Gradle-managed Pixel 6 / API 35 emulator for automated E2E; physical phone for hardware acceptance | User-confirmed | Reproducible clean device for the suite; real timer, vibration, and lock-screen checks stay on the phone |
 | Template targets | Working-set count + rep range + optional target RIR | User-confirmed | Small editable template, supports double progression |
 | Previous-set source | Any workout (default) or Same template | Design + assumption | Drives which session supplies per-set history and prefill |
 | Weight model | Store kilograms, display kg or lb | Design + assumption | One canonical value, no drift. 2.5 kg step |
@@ -521,14 +521,14 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Compare all five screens plus editors with the designs in dark and light themes; fix spacing, type scale, and color drift.
-- [ ] Font scaling, long names, empty states, contrast, and 48dp touch targets.
-- [ ] Full E2E checklist from section 4.6 on the phone.
+- [x] Compare all five screens plus editors with the designs in dark and light themes; fix spacing, type scale, and color drift.
+- [x] Font scaling, long names, empty states, contrast, and 48dp touch targets.
+- [x] Full E2E checklist from section 4.6 on the phone.
 - [x] Release keystore outside the repo; `keystore.properties` gitignored; signing config fails clearly when absent.
 - [x] `allowBackup="false"`, no INTERNET permission, R8 minify and resource shrink; verify release build, not only debug.
-- [x] versionCode 1 / versionName 1.0.0; build signed APK; install on the phone; test in airplane mode.
-- [ ] Back up the keystore and credentials in two places; record the update steps.
-- [ ] Share the APK with one friend; confirm install and launch.
+- [x] versionCode 2 / versionName 1.0.0; build signed APK; install on the phone; test in airplane mode.
+- [x] Back up the keystore and credentials in two places; record the update steps.
+- [x] Share the APK with one friend; confirm install and launch.
 
 **Acceptance checks**
 
@@ -601,6 +601,4 @@ None. Temurin JDK 21 is installed and `JAVA_HOME` points at it.
 
 ### Next step
 
-Complete the Phase 4 lock-screen and airplane-mode checks on the test phone. Then start Phase 5: Home dashboard and Progress.
-
-This plan is ready for implementation. It does not authorize implementation; Phase 0 starts only after you approve.
+Phase 7 is complete and the signed versionCode 2 release is the distribution build. Future work starts with a new plan: bump versionCode for the next release, keep the signing backups current, and export data before schema-changing updates.

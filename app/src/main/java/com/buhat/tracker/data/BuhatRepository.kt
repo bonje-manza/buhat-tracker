@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.buhat.tracker.BuildConfig
 import com.buhat.tracker.data.local.BuhatDatabase
 import com.buhat.tracker.data.local.Exercise
+import com.buhat.tracker.data.local.FinishedWorkout
 import com.buhat.tracker.data.local.HistorySetRow
 import com.buhat.tracker.data.local.LoggedSet
 import com.buhat.tracker.data.local.ProfileStats
@@ -20,6 +21,8 @@ import com.buhat.tracker.domain.LoggedSetRecord
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.domain.countsForProgression
+import com.buhat.tracker.domain.homeWindowStart
+import com.buhat.tracker.domain.priorWindowStart
 import com.buhat.tracker.domain.renumberWorkingSets
 import com.buhat.tracker.domain.restEndsAt
 import com.buhat.tracker.domain.restSecondsFor
@@ -30,6 +33,7 @@ import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -52,6 +56,19 @@ private const val ACTIVE_WORKOUT_BLOCK = "Finish or discard the workout first."
 data class TemplateCard(
     val template: Template,
     val exercises: List<TemplateExerciseRow>,
+)
+
+data class HomeDashboard(
+    val profileStats: ProfileStats,
+    val latest: HistorySession?,
+    val window: List<HistorySession>,
+    val bestBefore: Map<String, Double>,
+)
+
+data class ExerciseChoice(
+    val exerciseId: String,
+    val exerciseName: String,
+    val hasSets: Boolean,
 )
 
 data class TemplateDraft(
@@ -263,23 +280,8 @@ class BuhatRepository(
     fun loggedSets(sessionExerciseId: String): Flow<List<LoggedSet>> =
         database.dao().observeSetsFor(sessionExerciseId)
 
-    fun history(): Flow<List<HistorySession>> = database.dao().observeFinishedWorkouts().map { workouts ->
-        workouts.map { workout ->
-            HistorySession(
-                id = workout.session.id,
-                templateIdSnapshot = workout.session.templateIdSnapshot,
-                finishedAt = requireNotNull(workout.session.finishedAt),
-                templateNameSnapshot = workout.session.templateNameSnapshot,
-                exercises = workout.exercises.sortedBy { it.exercise.position }.map { row ->
-                    HistoryExercise(
-                        exerciseId = row.exercise.exerciseId,
-                        exerciseNameSnapshot = row.exercise.exerciseNameSnapshot,
-                        sets = row.sets.sortedBy { it.completedAt }.map { it.toRecord() },
-                    )
-                },
-            )
-        }
-    }
+    fun history(): Flow<List<HistorySession>> =
+        database.dao().observeFinishedWorkouts().map { workouts -> workouts.map { it.toHistorySession() } }
 
     suspend fun deleteFinishedSession(sessionId: String) {
         if (database.dao().deleteFinishedSession(sessionId) == 0) {
@@ -287,20 +289,35 @@ class BuhatRepository(
         }
     }
 
-    /** Finished sessions holding this exercise, newest last, for per-set progression. */
+    fun homeDashboard(nowMillis: Long): Flow<HomeDashboard> = combine(
+        database.dao().observeProfileStats(),
+        database.dao().observeLatestFinishedWorkout(),
+        database.dao().observeHistoryRowsSince(homeWindowStart(nowMillis)),
+        database.dao().observeBestE1rmBefore(priorWindowStart(nowMillis)),
+    ) { stats, latest, rows, best ->
+        HomeDashboard(
+            profileStats = stats,
+            latest = latest?.toHistorySession(),
+            window = rows.toHistorySessions(),
+            bestBefore = best.associate { it.exerciseId to it.bestE1rm },
+        )
+    }.flowOn(Dispatchers.Default)
+
+    /** Every finished session that logged the exercise, oldest first. */
     fun historyForExercise(exerciseId: String): Flow<List<HistorySession>> =
-        database.dao().observeHistoryRowsFor(exerciseId).map { rows ->
-            rows.groupBy { it.sessionId }.map { (sessionId, sessionRows) ->
-                HistorySession(
-                    id = sessionId,
-                    templateIdSnapshot = sessionRows.first().templateIdSnapshot,
-                    finishedAt = sessionRows.first().finishedAt ?: 0L,
-                    exercises = sessionRows.groupBy { it.exerciseId }.map { (id, sets) ->
-                        HistoryExercise(id, sets.map { it.toRecord() })
-                    },
-                )
+        database.dao().observeHistoryRowsFor(exerciseId).map { it.toHistorySessions() }
+            .flowOn(Dispatchers.Default)
+
+    /** The two finished sessions progression can read: latest overall and latest for the template. */
+    fun latestHistoryForExercise(exerciseId: String, templateIdSnapshot: String): Flow<List<HistorySession>> =
+        database.dao().observeLatestHistoryRowsFor(exerciseId, templateIdSnapshot).map { it.toHistorySessions() }
+
+    fun historyExerciseChoices(): Flow<List<ExerciseChoice>> =
+        database.dao().observeHistoryExerciseChoices().map { rows ->
+            rows.groupBy { it.exerciseId }.map { (exerciseId, entries) ->
+                ExerciseChoice(exerciseId, entries.first().exerciseNameSnapshot, entries.any { it.hasSets })
             }
-        }
+        }.flowOn(Dispatchers.Default)
 
     suspend fun startSession(templateId: String): String = sessionWriteMutex.withLock {
         val dao = database.dao()
@@ -363,7 +380,7 @@ class BuhatRepository(
         }
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
-        dao.insertSets(
+        val rowIds = dao.insertSets(
             listOf(
                 LoggedSet(
                     id = id,
@@ -377,6 +394,7 @@ class BuhatRepository(
                 ),
             ),
         )
+        if (rowIds.any { it == -1L }) throw SessionValidationException("Could not save the set. Try again.")
         val current = settingsStore.settings.first()
         settingsStore.setRestEndsAt(
             restEndsAt(
@@ -459,6 +477,34 @@ class BuhatRepository(
         rir = rir,
         completedAt = completedAt,
     )
+
+    private fun FinishedWorkout.toHistorySession() = HistorySession(
+        id = session.id,
+        templateIdSnapshot = session.templateIdSnapshot,
+        finishedAt = requireNotNull(session.finishedAt),
+        templateNameSnapshot = session.templateNameSnapshot,
+        exercises = exercises.sortedBy { it.exercise.position }.map { row ->
+            HistoryExercise(
+                exerciseId = row.exercise.exerciseId,
+                exerciseNameSnapshot = row.exercise.exerciseNameSnapshot,
+                sets = row.sets.sortedBy { it.completedAt }.map { it.toRecord() },
+            )
+        },
+    )
+
+    private fun List<HistorySetRow>.toHistorySessions(): List<HistorySession> =
+        groupBy { it.sessionId }.map { (sessionId, rows) ->
+            val first = rows.first()
+            HistorySession(
+                id = sessionId,
+                templateIdSnapshot = first.templateIdSnapshot,
+                finishedAt = requireNotNull(first.finishedAt),
+                templateNameSnapshot = first.templateNameSnapshot,
+                exercises = rows.groupBy { it.exerciseId }.map { (exerciseId, sets) ->
+                    HistoryExercise(exerciseId, sets.map { it.toRecord() })
+                },
+            )
+        }
 
     suspend fun exportBackup(): String = withContext(Dispatchers.IO) {
         sessionWriteMutex.withLock {

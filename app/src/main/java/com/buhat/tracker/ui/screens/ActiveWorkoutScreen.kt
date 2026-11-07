@@ -144,8 +144,9 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     val sets by remember(selected?.id) {
         selected?.let { repository.loggedSets(it.id) } ?: flowOf(emptyList())
     }.collectAsState(emptyList())
-    val history by remember(selected?.exerciseId) {
-        selected?.let { repository.historyForExercise(it.exerciseId) } ?: flowOf(emptyList())
+    val history by remember(selected?.exerciseId, session.templateIdSnapshot) {
+        selected?.let { repository.latestHistoryForExercise(it.exerciseId, session.templateIdSnapshot) }
+            ?: flowOf(emptyList())
     }.collectAsState(emptyList())
 
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -804,6 +805,12 @@ private fun SetFields(
         )
         StepButton("+", "${tagPrefix}rir-plus") { onRirChange((rir + 1).coerceIn(0, 5)) }
     }
+    Spacer(Modifier.height(4.dp))
+    Text(
+        text = "RIR · 0 = failure, 1 = one more rep possible",
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable

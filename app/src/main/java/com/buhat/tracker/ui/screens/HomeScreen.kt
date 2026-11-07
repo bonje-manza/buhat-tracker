@@ -36,14 +36,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.buhat.tracker.data.BuhatRepository
+import com.buhat.tracker.data.HomeDashboard
 import com.buhat.tracker.data.Profile
 import com.buhat.tracker.data.ProfileStore
 import com.buhat.tracker.data.local.ProfileStats
-import com.buhat.tracker.domain.HistorySession
+import com.buhat.tracker.domain.HOME_WINDOW_DAYS
 import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.e1rmTrend
 import com.buhat.tracker.domain.fourWeekStats
 import com.buhat.tracker.domain.formatWeight
+import com.buhat.tracker.domain.homeAnalyticsNow
 import com.buhat.tracker.ui.components.BuhatCard
 import com.buhat.tracker.ui.components.BuhatChoiceChip
 import com.buhat.tracker.ui.components.BuhatEmptyState
@@ -53,7 +55,12 @@ import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 
-private data class HomeData(val profile: Profile, val unit: WeightUnit, val history: List<HistorySession>)
+private data class HomeData(
+    val profile: Profile,
+    val unit: WeightUnit,
+    val dashboard: HomeDashboard,
+    val now: Long,
+)
 
 @Composable
 fun HomeScreen(
@@ -69,9 +76,14 @@ fun HomeScreen(
     val data by produceState<HomeData?>(null, repository, profileStore, attempt) {
         error = false
         try {
-            combine(profileStore.profile, repository.settingsStore.settings, repository.history()) { profile, settings, history ->
-                HomeData(profile, settings.unit, history)
-            }.collect { value = it }
+            // One clock reading per collection keeps the query cutoffs and the analytics windows aligned.
+            val now = System.currentTimeMillis()
+            combine(
+                profileStore.profile,
+                repository.settingsStore.settings,
+                repository.homeDashboard(now),
+            ) { profile, settings, dashboard -> HomeData(profile, settings.unit, dashboard, now) }
+                .collect { value = it }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -99,13 +111,13 @@ fun HomeScreen(
             return@Column
         }
         val profile = loaded.profile
-        val history = loaded.history
-        val stats = ProfileStats(history.size, history.minOfOrNull { it.finishedAt })
-        val recent = history.maxByOrNull { it.finishedAt }?.exercises.orEmpty().take(4)
+        val dashboard = loaded.dashboard
+        val recent = dashboard.latest?.exercises.orEmpty().take(4)
         val exercise = recent.firstOrNull { it.exerciseId == selectedExercise }
             ?: recent.firstOrNull { it.sets.isNotEmpty() }
             ?: recent.firstOrNull()
-        val now = System.currentTimeMillis()
+        // A session can finish after the collection clock snapshot, so the windows reach just past it.
+        val now = homeAnalyticsNow(loaded.now, dashboard.window.maxOfOrNull { it.finishedAt })
         BuhatCard(Modifier.testTag("profile-card").clickable(onClick = onOpenProfile)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -130,7 +142,7 @@ fun HomeScreen(
                         modifier = Modifier.testTag("profile-card-name"),
                     )
                     Text(
-                        text = trainingSummary(stats),
+                        text = trainingSummary(dashboard.profileStats),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -169,7 +181,18 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(16.dp))
         BuhatCard {
-            Text("Strength trend · 3 months", style = MaterialTheme.typography.titleLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Strength trend · 3 months",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "Est. 1RM",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             if (exercise == null) {
                 BuhatEmptyState("No strength history", "Finish a workout to see your progress.", Modifier.testTag("home-empty"))
             } else {
@@ -181,12 +204,12 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.height(16.dp))
-                StrengthTrend(e1rmTrend(history, exercise.exerciseId, 90, now), exercise.exerciseNameSnapshot,
-                    "3M", loaded.unit, "home")
+                StrengthTrend(e1rmTrend(dashboard.window, exercise.exerciseId, HOME_WINDOW_DAYS, now),
+                    exercise.exerciseNameSnapshot, "3M", loaded.unit, "home")
             }
         }
         Spacer(Modifier.height(16.dp))
-        val analytics = fourWeekStats(history, now)
+        val analytics = fourWeekStats(dashboard.window, now, dashboard.bestBefore)
         BuhatCard {
             Text("Analytics · last 4 weeks", style = MaterialTheme.typography.titleLarge)
             Text("vs prior 4 weeks", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

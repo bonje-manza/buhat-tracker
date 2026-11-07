@@ -1,14 +1,32 @@
 package com.buhat.tracker.domain
 
 const val DAY_MS = 86_400_000L
+const val FOUR_WEEK_DAYS = 28
+const val HOME_WINDOW_DAYS = 90
+
+fun currentWindowStart(nowMillis: Long) = nowMillis - FOUR_WEEK_DAYS * DAY_MS
+
+fun priorWindowStart(nowMillis: Long) = nowMillis - 2 * FOUR_WEEK_DAYS * DAY_MS
+
+fun homeWindowStart(nowMillis: Long) = nowMillis - HOME_WINDOW_DAYS * DAY_MS
+
+/**
+ * The analytics clock for Home. A session can finish just after the collection clock
+ * snapshot, so the windows reach past it; the reach stops at one day so a far-future
+ * imported or clock-skewed row cannot shift the whole four-week and three-month window.
+ */
+fun homeAnalyticsNow(collectionNow: Long, newestFinishedAt: Long?): Long {
+    if (newestFinishedAt == null) return collectionNow
+    return newestFinishedAt.coerceIn(collectionNow, collectionNow + DAY_MS)
+}
 
 fun e1rm(weightKg: Double, reps: Int): Double? {
     if (weightKg <= 0.0 || reps <= 0) return null
     return weightKg * (1.0 + reps / 30.0)
 }
 
-fun prSetIds(history: List<HistorySession>): Set<String> {
-    val bestByExercise = HashMap<String, Double>()
+fun prSetIds(history: List<HistorySession>, bestBefore: Map<String, Double> = emptyMap()): Set<String> {
+    val bestByExercise = HashMap<String, Double>(bestBefore)
     val prs = HashSet<String>()
     history.sortedBy { it.finishedAt }.forEach { session ->
         session.exercises.forEach { exercise ->
@@ -47,7 +65,6 @@ private data class SessionStats(
     val finishedAt: Long,
     val workingSets: Int,
     val volumeKg: Double,
-    val workingSetIds: Set<String>,
     val prSetIds: Set<String>,
 )
 
@@ -58,19 +75,22 @@ private fun sessionStat(session: HistorySession, allPrs: Set<String>): SessionSt
         finishedAt = session.finishedAt,
         workingSets = workingSession.size,
         volumeKg = workingSession.sumOf { it.weightKg * it.reps },
-        workingSetIds = setIds,
         prSetIds = allPrs intersect setIds,
     )
 }
 
-fun fourWeekStats(history: List<HistorySession>, nowMillis: Long): FourWeekStats {
-    val prs = prSetIds(history)
+fun fourWeekStats(
+    history: List<HistorySession>,
+    nowMillis: Long,
+    bestBefore: Map<String, Double> = emptyMap(),
+): FourWeekStats {
+    val prs = prSetIds(history, bestBefore)
     val stats = history.map { sessionStat(it, prs) }
         .sortedBy { it.finishedAt }
 
     // Windows include the boundary: current [now-28d, now], prior [now-56d, now-28d).
-    val currentStart = nowMillis - 28 * DAY_MS
-    val priorStart = nowMillis - 56 * DAY_MS
+    val currentStart = currentWindowStart(nowMillis)
+    val priorStart = priorWindowStart(nowMillis)
     val current = stats.filter { it.finishedAt in currentStart..nowMillis }
     val prior = stats.filter { it.finishedAt in priorStart until currentStart }
 

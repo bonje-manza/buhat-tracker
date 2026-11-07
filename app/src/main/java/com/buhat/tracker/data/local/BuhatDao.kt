@@ -166,6 +166,7 @@ interface BuhatDao {
     @Query(
         """
         SELECT s.id AS sessionId, s.templateIdSnapshot AS templateIdSnapshot,
+               s.templateNameSnapshot AS templateNameSnapshot,
                s.finishedAt AS finishedAt, se.exerciseId AS exerciseId,
                ls.id AS setId, ls.setType AS setType, ls.workingIndex AS workingIndex,
                ls.weightKg AS weightKg, ls.reps AS reps, ls.rir AS rir,
@@ -178,6 +179,90 @@ interface BuhatDao {
         """,
     )
     fun observeHistoryRowsFor(exerciseId: String): Flow<List<HistorySetRow>>
+
+    @Query(
+        """
+        SELECT s.id AS sessionId, s.templateIdSnapshot AS templateIdSnapshot,
+               s.templateNameSnapshot AS templateNameSnapshot,
+               s.finishedAt AS finishedAt, se.exerciseId AS exerciseId,
+               ls.id AS setId, ls.setType AS setType, ls.workingIndex AS workingIndex,
+               ls.weightKg AS weightKg, ls.reps AS reps, ls.rir AS rir,
+               ls.completedAt AS completedAt
+        FROM WorkoutSession s
+        JOIN SessionExercise se ON se.sessionId = s.id
+        JOIN LoggedSet ls ON ls.sessionExerciseId = se.id
+        WHERE s.status = 'FINISHED' AND se.exerciseId = :exerciseId
+          AND (
+            s.id IN (
+                SELECT latest.id FROM WorkoutSession latest
+                JOIN SessionExercise latestSe ON latestSe.sessionId = latest.id
+                WHERE latest.status = 'FINISHED' AND latestSe.exerciseId = :exerciseId
+                  AND EXISTS(SELECT 1 FROM LoggedSet latestSet WHERE latestSet.sessionExerciseId = latestSe.id)
+                ORDER BY latest.finishedAt DESC, latest.id DESC
+                LIMIT 1
+            )
+            OR s.id IN (
+                SELECT matching.id FROM WorkoutSession matching
+                JOIN SessionExercise matchingSe ON matchingSe.sessionId = matching.id
+                WHERE matching.status = 'FINISHED' AND matchingSe.exerciseId = :exerciseId
+                  AND matching.templateIdSnapshot = :templateIdSnapshot
+                  AND EXISTS(SELECT 1 FROM LoggedSet matchingSet WHERE matchingSet.sessionExerciseId = matchingSe.id)
+                ORDER BY matching.finishedAt DESC, matching.id DESC
+                LIMIT 1
+            )
+          )
+        ORDER BY s.finishedAt, ls.completedAt
+        """,
+    )
+    fun observeLatestHistoryRowsFor(exerciseId: String, templateIdSnapshot: String): Flow<List<HistorySetRow>>
+
+    @Query(
+        """
+        SELECT s.id AS sessionId, s.templateIdSnapshot AS templateIdSnapshot,
+               s.templateNameSnapshot AS templateNameSnapshot,
+               s.finishedAt AS finishedAt, se.exerciseId AS exerciseId,
+               ls.id AS setId, ls.setType AS setType, ls.workingIndex AS workingIndex,
+               ls.weightKg AS weightKg, ls.reps AS reps, ls.rir AS rir,
+               ls.completedAt AS completedAt
+        FROM WorkoutSession s
+        JOIN SessionExercise se ON se.sessionId = s.id
+        JOIN LoggedSet ls ON ls.sessionExerciseId = se.id
+        WHERE s.status = 'FINISHED' AND s.finishedAt >= :cutoffMillis
+        ORDER BY s.finishedAt, s.id, se.position, ls.completedAt
+        """,
+    )
+    fun observeHistoryRowsSince(cutoffMillis: Long): Flow<List<HistorySetRow>>
+
+    @Query(
+        """
+        SELECT se.exerciseId AS exerciseId,
+               MAX(ls.weightKg * (1.0 + ls.reps / 30.0)) AS bestE1rm
+        FROM LoggedSet ls
+        JOIN SessionExercise se ON se.id = ls.sessionExerciseId
+        JOIN WorkoutSession s ON s.id = se.sessionId
+        WHERE s.status = 'FINISHED' AND s.finishedAt < :cutoffMillis
+          AND ls.setType != 'WARMUP' AND ls.weightKg > 0 AND ls.reps > 0
+        GROUP BY se.exerciseId
+        """,
+    )
+    fun observeBestE1rmBefore(cutoffMillis: Long): Flow<List<ExerciseBestE1rm>>
+
+    @Query(
+        """
+        SELECT se.exerciseId AS exerciseId, se.exerciseNameSnapshot AS exerciseNameSnapshot,
+               s.finishedAt AS finishedAt, s.id AS sessionId,
+               EXISTS(SELECT 1 FROM LoggedSet ls WHERE ls.sessionExerciseId = se.id) AS hasSets
+        FROM SessionExercise se
+        JOIN WorkoutSession s ON s.id = se.sessionId
+        WHERE s.status = 'FINISHED'
+        ORDER BY s.finishedAt DESC, s.id DESC, se.position
+        """,
+    )
+    fun observeHistoryExerciseChoices(): Flow<List<HistoryExerciseChoice>>
+
+    @Transaction
+    @Query("SELECT * FROM WorkoutSession WHERE status = 'FINISHED' ORDER BY finishedAt DESC, id ASC LIMIT 1")
+    fun observeLatestFinishedWorkout(): Flow<FinishedWorkout?>
 
     @Transaction
     @Query("SELECT * FROM WorkoutSession WHERE status = 'FINISHED' ORDER BY finishedAt, id")
@@ -260,6 +345,7 @@ data class ProfileStats(
 data class HistorySetRow(
     val sessionId: String,
     val templateIdSnapshot: String,
+    val templateNameSnapshot: String,
     val finishedAt: Long?,
     val exerciseId: String,
     val setId: String,
@@ -269,6 +355,19 @@ data class HistorySetRow(
     val reps: Int,
     val rir: Int?,
     val completedAt: Long,
+)
+
+data class ExerciseBestE1rm(
+    val exerciseId: String,
+    val bestE1rm: Double,
+)
+
+data class HistoryExerciseChoice(
+    val exerciseId: String,
+    val exerciseNameSnapshot: String,
+    val finishedAt: Long,
+    val sessionId: String,
+    val hasSets: Boolean,
 )
 
 data class FinishedWorkout(

@@ -6,8 +6,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.buhat.tracker.data.local.BuhatDatabase
 import com.buhat.tracker.data.local.WorkoutStatus
+import com.buhat.tracker.domain.PreviousSetSource
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
+import com.buhat.tracker.domain.sourceSetForPosition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -155,6 +157,24 @@ class SessionRepositoryTest {
     }
 
     @Test
+    fun logSetRejectsANonFiniteWeightBeforeStoringTheSetOrStartingARest() = runTest {
+        val sessionId = repo.startSession(premadeTemplateId("Push Day A"))
+        val bench = firstExerciseOf(sessionId)
+
+        val error = try {
+            repo.logSet(bench.id, SetType.WORKING, weightKg = Double.NaN, reps = 8, rir = 2)
+            null
+        } catch (e: SessionValidationException) {
+            e.message
+        }
+
+        assertEquals("Weight must be 0 to 1000 kg.", error)
+        assertTrue(repo.loggedSets(bench.id).first().isEmpty())
+        assertTrue(db.dao().allSets().isEmpty())
+        assertNull(repo.settingsStore.settings.first().restEndsAt)
+    }
+
+    @Test
     fun finishingWritesAFinishedSessionAndClearsTheActiveOne() = runTest {
         val sessionId = repo.startSession(premadeTemplateId("Push Day A"))
         val bench = firstExerciseOf(sessionId)
@@ -233,11 +253,54 @@ class SessionRepositoryTest {
         val session = history.single()
         assertEquals(finished, session.id)
         assertEquals(premadeTemplateId("Push Day A"), session.templateIdSnapshot)
+        assertEquals("Push Day A", session.templateNameSnapshot)
         assertEquals(listOf(benchExerciseId), session.exercises.map { it.exerciseId })
         // Warmups are stored but never feed progression.
         assertEquals(
             listOf(SetType.WARMUP, SetType.WORKING),
             session.exercises.single().sets.map { it.setType },
+        )
+    }
+
+    @Test
+    fun boundedHistoryFeedsBothProgressionSources() = runTest {
+        val bench = seededId("exercise", "Bench Press")
+        val pushId = premadeTemplateId("Push Day A")
+        val benchOnlyId = repo.saveTemplate(
+            null,
+            "Bench Only",
+            listOf(TemplateExerciseDraft(bench, "Bench Press", 3, 6, 8, null)),
+        )
+
+        suspend fun finish(templateId: String, weightKg: Double, finishedAt: Long): String {
+            val sessionId = repo.startSession(templateId)
+            val benchRow = firstExerciseOf(sessionId)
+            repo.logSet(benchRow.id, SetType.WORKING, weightKg = weightKg, reps = 8, rir = 2)
+            repo.finishSession(sessionId)
+            // Explicit timestamps keep the ordering independent of the wall clock.
+            db.dao().updateSession(
+                repo.session(sessionId)!!.copy(startedAt = finishedAt - 1_000, finishedAt = finishedAt),
+            )
+            return sessionId
+        }
+
+        val oldest = finish(pushId, weightKg = 80.0, finishedAt = 1_000)
+        val middle = finish(pushId, weightKg = 85.0, finishedAt = 2_000)
+        val newest = finish(benchOnlyId, weightKg = 90.0, finishedAt = 3_000)
+
+        val history = repo.latestHistoryForExercise(bench, pushId).first()
+
+        assertEquals(listOf(middle, newest), history.map { it.id })
+        assertTrue(oldest !in history.map { it.id })
+        assertEquals(
+            85.0,
+            sourceSetForPosition(history, bench, 1, PreviousSetSource.SAME_TEMPLATE, pushId)!!.weightKg,
+            0.0,
+        )
+        assertEquals(
+            90.0,
+            sourceSetForPosition(history, bench, 1, PreviousSetSource.ANY_WORKOUT, pushId)!!.weightKg,
+            0.0,
         )
     }
 }
