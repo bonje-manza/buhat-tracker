@@ -45,11 +45,10 @@ import com.buhat.tracker.ui.BackupController
 import com.buhat.tracker.ui.backupFileName
 import com.buhat.tracker.ui.components.BuhatCard
 import com.buhat.tracker.ui.diagnosticsFileName
+import com.buhat.tracker.ui.formatEpochDate
 import com.buhat.tracker.ui.components.BuhatScreen
 import com.buhat.tracker.ui.components.BuhatSegmentedControl
 import com.buhat.tracker.ui.components.BuhatStepper
-import java.time.Instant
-import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -73,9 +72,11 @@ fun SettingsScreen(
     val hasActiveSession by remember(repository, attempt) {
         repository.activeSession().map { it != null }.catch { loadError = true }
     }.collectAsState<Boolean, Boolean?>(null)
-    val lastExportAt by remember(settingsStore) {
-        settingsStore.lastExportAt.catch { emit(null) }
-    }.collectAsState(initial = null)
+    val backupLabel by remember(settingsStore) {
+        settingsStore.lastExportAt
+            .map { BackupLabel(loaded = true, lastExportAt = it) }
+            .catch { emit(BackupLabel(loaded = true)) }
+    }.collectAsState(initial = BackupLabel())
     val context = LocalContext.current
 
     val busy = backupController.busy
@@ -238,7 +239,11 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = lastExportAt?.let { "Last backup: ${formatExportDate(it)}" } ?: "No backup yet.",
+                        text = when {
+                            !backupLabel.loaded -> "Last backup: …"
+                            backupLabel.lastExportAt == null -> "No backup yet."
+                            else -> "Last backup: ${formatEpochDate(backupLabel.lastExportAt!!)}"
+                        },
                         color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.testTag("last-backup"),
@@ -317,7 +322,7 @@ fun SettingsScreen(
             title = { Text("Replace all local data?") },
             text = {
                 Column {
-                    Text("Exported ${formatExportDate(summary.exportedAt)}")
+                    Text("Exported ${formatEpochDate(summary.exportedAt)}")
                     Text(
                         "${summary.exercises} exercises, ${summary.templates} templates, " +
                             "${summary.sessions} workouts, ${summary.sets} sets.",
@@ -356,8 +361,10 @@ private fun SectionTitle(text: String) {
     )
 }
 
-private fun formatExportDate(epochMillis: Long): String =
-    Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+private data class BackupLabel(
+    val loaded: Boolean = false,
+    val lastExportAt: Long? = null,
+)
 
 @Composable
 private fun RestRow(

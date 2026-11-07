@@ -238,8 +238,8 @@ private fun VersionUpdatePrompt(repository: BuhatRepository, backupController: B
 
     fun acknowledge() {
         scope.launch {
-            store.acknowledgeVersion(BuildConfig.VERSION_CODE)
-            show = false
+            runCatching { store.acknowledgeVersion(BuildConfig.VERSION_CODE) }
+                .onSuccess { show = false }
         }
     }
 

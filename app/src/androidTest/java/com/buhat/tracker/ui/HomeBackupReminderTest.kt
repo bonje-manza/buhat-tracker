@@ -1,9 +1,11 @@
 package com.buhat.tracker.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
@@ -11,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.buhat.tracker.BuhatApplication
 import com.buhat.tracker.MainActivity
 import com.buhat.tracker.data.recordBenchWorkout
+import com.buhat.tracker.data.seededId
 import com.buhat.tracker.domain.DAY_MILLIS
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -80,5 +83,18 @@ class HomeBackupReminderTest {
         compose.onNodeWithTag("tab-Home").performClick()
         awaitTag("backup-reminder")
         compose.onNodeWithTag("backup-reminder").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun activeWorkoutDisablesExportAndShowsTheHint() {
+        runBlocking {
+            container.recordBenchWorkout()
+            container.repository.startSession(seededId("template", "Push Day A"))
+        }
+        compose.onNodeWithTag("tab-Home").performClick()
+        awaitTag("backup-reminder")
+
+        compose.onNodeWithTag("backup-reminder-export").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Finish or discard the workout first.", substring = true).assertExists()
     }
 }

@@ -14,12 +14,17 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+private const val RECOVERY_IMPORT_ERROR =
+    "Training data was reset, but the backup did not import. Your backup file is unchanged. Import it again from Settings."
+
 class BuhatApplication : Application() {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val recoveryMutex = Mutex()
     private val _containerGeneration = MutableStateFlow(0)
     val containerGeneration: StateFlow<Int> = _containerGeneration
+    private val _recoveryError = MutableStateFlow<String?>(null)
+    val recoveryError: StateFlow<String?> = _recoveryError
 
     lateinit var diagnosticsLog: DiagnosticsLog
         private set
@@ -52,8 +57,7 @@ class BuhatApplication : Application() {
     // Test-only hook (see .opencode/skills/e2e-testing, Isolation): swap in an in-memory
     // database so a UI test starts from a known state, then seed it synchronously.
     fun resetForTest() {
-        runBlocking { container.stop() }
-        container.close()
+        runBlocking { container.close() }
         diagnosticsLog.acknowledgeCrash()
         container = newContainer(inMemory = true)
         runBlocking { container.startNow() }
@@ -72,6 +76,10 @@ class BuhatApplication : Application() {
         }
     }
 
+    fun dismissRecoveryError() {
+        _recoveryError.value = null
+    }
+
     private suspend fun replaceContainer(importText: String?) {
         val old = container
         old.stop()
@@ -79,10 +87,18 @@ class BuhatApplication : Application() {
         old.close()
         deleteDatabase(DATABASE_NAME)
         val fresh = newContainer()
-        fresh.startNow()
-        importText?.let { text ->
-            runCatching { fresh.repository.importBackup(text) }
-                .onFailure { diagnosticsLog.error("recovery", "import failed", it) }
+        if (importText == null) {
+            fresh.startNow(seedApp = true)
+            _recoveryError.value = null
+        } else {
+            fresh.startNow(seedApp = false)
+            runCatching { fresh.repository.importBackup(importText) }
+                .onSuccess { _recoveryError.value = null }
+                .onFailure {
+                    diagnosticsLog.error("recovery", "import failed", it)
+                    _recoveryError.value = RECOVERY_IMPORT_ERROR
+                    runCatching { fresh.startNow(seedApp = true) }
+                }
         }
         container = fresh
         _containerGeneration.value++

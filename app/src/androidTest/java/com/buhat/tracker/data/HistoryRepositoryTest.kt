@@ -29,7 +29,7 @@ class HistoryRepositoryTest {
         container.repository.seedIfNeeded()
     }
 
-    @After fun tearDown() = container.close()
+    @After fun tearDown() = runBlocking { container.close() }
 
     @Test fun finishedHistoryPreservesSnapshotsSkippedExercisesAndWarmups() = runBlocking {
         val repo = container.repository

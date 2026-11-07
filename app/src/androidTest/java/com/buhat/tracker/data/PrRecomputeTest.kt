@@ -26,7 +26,7 @@ class PrRecomputeTest {
         container.repository.seedIfNeeded()
     }
 
-    @After fun tearDown() = container.close()
+    @After fun tearDown() = runBlocking { container.close() }
 
     private val benchId get() = seededId("exercise", "Bench Press")
 

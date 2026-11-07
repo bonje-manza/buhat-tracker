@@ -66,6 +66,7 @@ import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 private data class HomeData(
@@ -73,6 +74,12 @@ private data class HomeData(
     val unit: WeightUnit,
     val dashboard: HomeDashboard,
     val now: Long,
+)
+
+private data class BackupStatus(
+    val loaded: Boolean = false,
+    val lastExportAt: Long? = null,
+    val snoozedUntil: Long? = null,
 )
 
 @Composable
@@ -86,11 +93,15 @@ fun HomeScreen(
 ) {
     var attempt by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf(false) }
-    val lastExportAt by remember(repository) {
-        repository.settingsStore.lastExportAt.catch { emit(null) }
-    }.collectAsState(initial = null)
-    val snoozedUntil by remember(repository) {
-        repository.settingsStore.backupSnoozedUntil.catch { emit(null) }
+    val backupStatus by remember(repository) {
+        combine(
+            repository.settingsStore.lastExportAt,
+            repository.settingsStore.backupSnoozedUntil,
+        ) { last, snooze -> BackupStatus(loaded = true, lastExportAt = last, snoozedUntil = snooze) }
+            .catch { emit(BackupStatus(loaded = true)) }
+    }.collectAsState(initial = BackupStatus())
+    val hasActiveSession by remember(repository) {
+        repository.activeSession().map { it != null }.catch { emit(false) }
     }.collectAsState(initial = null)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -199,17 +210,28 @@ fun HomeScreen(
                 ProfileTile("Height", profile.heightCm?.let { "$it cm" } ?: "—", Modifier.weight(1f))
             }
         }
-        if (shouldRemindBackup(lastExportAt, snoozedUntil, loaded.now, dashboard.profileStats.totalWorkouts > 0)) {
+        if (backupStatus.loaded &&
+            shouldRemindBackup(
+                backupStatus.lastExportAt,
+                backupStatus.snoozedUntil,
+                loaded.now,
+                dashboard.profileStats.totalWorkouts > 0,
+            )
+        ) {
             Spacer(Modifier.height(16.dp))
             BackupReminderCard(
-                lastExportAt = lastExportAt,
+                lastExportAt = backupStatus.lastExportAt,
                 now = loaded.now,
+                active = hasActiveSession == true,
+                busy = backupController.busy,
                 onExport = { exportLauncher.launch(backupFileName()) },
                 onSnooze = {
                     scope.launch {
-                        repository.settingsStore.snoozeBackupReminder(
-                            System.currentTimeMillis() + BACKUP_SNOOZE_DAYS * DAY_MILLIS,
-                        )
+                        runCatching {
+                            repository.settingsStore.snoozeBackupReminder(
+                                System.currentTimeMillis() + BACKUP_SNOOZE_DAYS * DAY_MILLIS,
+                            )
+                        }
                     }
                 },
             )
@@ -303,6 +325,8 @@ private fun ProfileTile(label: String, value: String, modifier: Modifier = Modif
 private fun BackupReminderCard(
     lastExportAt: Long?,
     now: Long,
+    active: Boolean,
+    busy: Boolean,
     onExport: () -> Unit,
     onSnooze: () -> Unit,
 ) {
@@ -323,10 +347,18 @@ private fun BackupReminderCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )
+        if (active) {
+            Text(
+                text = "Finish or discard the workout first.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = onExport,
+                enabled = !active && !busy,
                 modifier = Modifier.weight(1f).testTag("backup-reminder-export"),
             ) { Text("Export now") }
             TextButton(

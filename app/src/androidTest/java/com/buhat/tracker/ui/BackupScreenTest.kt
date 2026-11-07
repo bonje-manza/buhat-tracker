@@ -137,6 +137,7 @@ class BackupScreenTest {
         file.mkdir()
         click("export-data")
         awaitText("Could not write the backup file")
+        assertNull(runBlocking { repo.settingsStore.lastExportAt.first() })
         file.delete()
         file.writeText(captured)
         click("import-data")

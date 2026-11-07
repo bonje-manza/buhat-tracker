@@ -50,13 +50,15 @@ class AppContainer(
     private val inMemory: Boolean = false,
     val diagnosticsLog: DiagnosticsLog = DiagnosticsLog(File(context.filesDir, "diagnostics"), BuildConfig.DEBUG),
     private val seed: suspend (BuhatRepository) -> Unit = { it.seedIfNeeded() },
+    private val databaseName: String = DATABASE_NAME,
+    private val dataStoreFileOverride: File? = null,
 ) {
 
     private val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     // A test container gets its own file: a closed DataStore keeps its file registered
     // briefly, and reusing the name would fail the next reset.
-    private val dataStoreFile = if (inMemory) {
+    private val dataStoreFile = dataStoreFileOverride ?: if (inMemory) {
         File(context.cacheDir, "buhat-test-${UUID.randomUUID()}.preferences_pb")
     } else {
         context.preferencesDataStoreFile("buhat")
@@ -70,7 +72,7 @@ class AppContainer(
     val database: BuhatDatabase = if (inMemory) {
         Room.inMemoryDatabaseBuilder(context, BuhatDatabase::class.java).build()
     } else {
-        Room.databaseBuilder(context, BuhatDatabase::class.java, DATABASE_NAME)
+        Room.databaseBuilder(context, BuhatDatabase::class.java, databaseName)
             .addMigrations(BuhatDatabase.MIGRATION_1_2)
             .build()
     }
@@ -96,7 +98,7 @@ class AppContainer(
         startupJob = appScope.launch { startNow() }
     }
 
-    suspend fun startNow() {
+    suspend fun startNow(seedApp: Boolean = true) {
         _startupState.value = StartupState.Checking
         try {
             withContext(Dispatchers.IO) { database.openHelper.writableDatabase }
@@ -110,7 +112,7 @@ class AppContainer(
                 if (settingsStore.lastRunVersionCode.first() == null) {
                     settingsStore.acknowledgeVersion(BuildConfig.VERSION_CODE)
                 }
-                seed(repository)
+                if (seedApp) seed(repository)
             }
             _startupState.value = StartupState.Ready
         } catch (e: Exception) {
@@ -124,11 +126,12 @@ class AppContainer(
         startupJob = null
     }
 
-    fun close() {
-        startupJob?.cancel()
-        database.close()
-        dataStoreScope.cancel()
+    suspend fun close() {
+        startupJob?.cancelAndJoin()
+        startupJob = null
+        dataStoreScope.coroutineContext[Job]?.cancelAndJoin()
         appScope.cancel()
-        if (inMemory) dataStoreFile.delete()
+        database.close()
+        if (inMemory && dataStoreFileOverride == null) dataStoreFile.delete()
     }
 }

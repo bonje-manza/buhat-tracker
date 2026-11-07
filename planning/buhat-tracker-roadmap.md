@@ -2,7 +2,7 @@
 
 ## 1. Status, goal, and success criteria
 
-**Status:** Phase 8 is complete. The app now has local diagnostics, a backup reminder, startup recovery, and an update backup prompt. Latest recorded automated suite: 99 unit, 166 device, 0 failed. The signed release verifier passes with no INTERNET permission and no new permissions. Physical and owner acceptance checks pass on the signed release.
+**Status:** Phase 9 is complete. Recovery now closes the DataStore before reopening it, failed restores are visible, recovery validation is off the main thread, and preference-write failures cannot crash the app. Latest recorded automated suite: 99 unit, 174 device, 0 failed. The signed release verifier passes with no INTERNET permission and no new permissions. Physical and owner acceptance checks pass on the signed release.
 
 **Goal:** A private, offline Android strength log for you and your friends. Each install owns its data. You train from premade or custom templates, log every set with weight, reps, RIR, and type, get per-set double-progression targets, run a rest timer, and review e1RM progress. Data moves by JSON export/import. Delivery is a signed APK.
 
@@ -49,7 +49,7 @@
 - Editing a finished workout (deleting one is allowed).
 - Localization beyond English.
 - App lock, encryption at rest, cloud auto-backup.
-- Automatic folder export and cloud auto-backup.
+- Automatic folder export.
 - Encrypted backup files.
 - Network crash reporting or analytics.
 
@@ -574,6 +574,37 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 - The full E2E suite passes on the current head. The release build has no INTERNET permission, no new permissions, and writes diagnostics only to app-private storage or a user-chosen file.
 - Existing export/import, timer, active-session, analytics, and visual behavior is unchanged.
 
+### Phase 9 - Recovery and diagnostics hardening
+
+**Outcome:** The Phase 8 recovery and diagnostics paths hold under failure. Reset and recovery reopen the same DataStore without a collision, a failed restore is visible, large backups are validated off the main thread, and a failed preference write cannot crash the app.
+
+**Prerequisites:** Phase 8.
+
+**Work**
+
+- [x] Make `AppContainer.close()` suspend and join the DataStore scope before returning. Use it in reset and recovery so a second DataStore cannot open `buhat.preferences_pb` before the first releases it.
+- [x] Disable the Home backup reminder's "Export now" during an active workout and show the same "Finish or discard the workout first." hint as Settings.
+- [x] Show a recovery import failure in the new app. State that local data was reset, the backup file is unchanged, and it can be imported again from Settings.
+- [x] Move recovery backup decoding and validation onto `Dispatchers.IO`.
+- [x] Open a recovery container without seeding, then import, so a seed failure cannot leave a false setup error. If the import fails, seed the fresh app before showing it.
+- [x] Wrap the update-prompt acknowledgement and Home snooze writes so a failed preference write cannot crash the app.
+- [x] Guard the `MainActivity` theme flow with a fallback so a closed DataStore cannot crash the app.
+- [x] Use a loaded state for the Home backup reminder and the Settings last-backup label so neither shows "No backup yet" before the DataStore emits.
+- [x] Replace the two date formatters with one shared helper.
+- [x] Add tests: end-to-end recovery reset/import, failed export leaves the last-export date null, no-PII diagnostics after a real workout, update prompt active-session and successful-export branches, and the active-workout Home reminder.
+
+**Acceptance checks**
+
+- A reset or recovery on an unreadable database completes without a DataStore collision and leaves a usable app.
+- A failed post-reset import shows a message, keeps the backup file, and does not crash.
+- The Home reminder's export button is disabled with a clear hint while a workout is active.
+- A 20 MB recovery backup validates without blocking the main thread.
+- A failed preference write does not crash the app on "Not now," a successful update export, or "Remind me in 7 days."
+- A successful recovery import restores the backup, and the app does not seed over it.
+- Diagnostics exported after a workout contains no exercise name, weight, or profile value.
+- The full E2E suite and release verifier pass.
+- Existing export/import, timer, active-session, analytics, and visual behavior is unchanged.
+
 ### 5.1 Traceability
 
 | Requirement | Planned work | Acceptance evidence |
@@ -597,6 +628,10 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 | Local diagnostics and crash reports | Phase 8 | Crash notice appears, diagnostics export contains no training data |
 | Recovery and rollback | Phase 8 | Higher-version database shows recovery screen, reset and import restore data |
 | Update backup prompt | Phase 8 | Prompt appears once after versionCode change, not on fresh install |
+| Recovery DataStore safety | Phase 9 | Reset and recovery reopen the same DataStore without a collision |
+| Visible recovery failures | Phase 9 | A failed post-reset import shows a message and keeps the backup |
+| Backup reminder guard | Phase 9 | Export is disabled during an active workout |
+| Diagnostics privacy | Phase 9 | Export after a workout contains no exercise or profile values |
 
 ## 6. Dependencies, remaining uncertainties, and next step
 
@@ -640,4 +675,4 @@ None. Temurin JDK 21 is installed and `JAVA_HOME` points at it.
 
 ### Next step
 
-Phase 8 is complete. Bump versionCode for the next release, keep the signing backups current, and export data before schema-changing updates.
+Phase 9 is complete. Bump versionCode for the next release, keep the signing backups current, and export data before schema-changing updates.

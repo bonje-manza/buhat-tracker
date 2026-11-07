@@ -8,6 +8,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.buhat.tracker.BuhatApplication
+import com.buhat.tracker.data.recordBenchWorkout
 import com.buhat.tracker.diagnostics.DiagnosticsController
 import com.buhat.tracker.diagnostics.DiagnosticsLog
 import com.buhat.tracker.ui.theme.BuhatTheme
@@ -68,6 +69,21 @@ class DiagnosticsTest {
 
         controller.dismissCrash()
         assertFalse(controller.pendingCrash)
+    }
+
+    @Test
+    fun diagnosticsExportAfterAWorkoutContainsNoTrainingData() = runBlocking {
+        app.container.recordBenchWorkout()
+        val file = File(app.cacheDir, "diag-${UUID.randomUUID()}.txt")
+
+        app.container.diagnosticsController.export(app.contentResolver, Uri.fromFile(file))
+
+        withTimeout(5_000) {
+            while (!file.exists() || !file.readText().contains("Buhat")) delay(10)
+        }
+        val text = file.readText()
+        assertFalse(text.contains("Bench Press"))
+        assertFalse(text.contains("80.0"))
     }
 
     @Test

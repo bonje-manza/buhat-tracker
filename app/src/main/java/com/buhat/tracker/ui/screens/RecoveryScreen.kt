@@ -37,8 +37,7 @@ import com.buhat.tracker.data.summary
 import com.buhat.tracker.diagnostics.DiagnosticsController
 import com.buhat.tracker.ui.components.BuhatCard
 import com.buhat.tracker.ui.diagnosticsFileName
-import java.time.Instant
-import java.time.ZoneId
+import com.buhat.tracker.ui.formatEpochDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -68,8 +67,11 @@ fun RecoveryScreen(
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             try {
-                val text = withContext(Dispatchers.IO) { readBackupText(context.contentResolver, uri) }
-                pendingImport = text to decodeBackup(text).summary()
+                val (text, summary) = withContext(Dispatchers.IO) {
+                    val text = readBackupText(context.contentResolver, uri)
+                    text to decodeBackup(text).summary()
+                }
+                pendingImport = text to summary
                 importError = null
             } catch (e: CancellationException) {
                 throw e
@@ -158,7 +160,7 @@ fun RecoveryScreen(
             title = { Text("Replace local data with this backup?") },
             text = {
                 Column {
-                    Text("Exported ${formatRecoveryDate(summary.exportedAt)}")
+                    Text("Exported ${formatEpochDate(summary.exportedAt)}")
                     Text(
                         "${summary.exercises} exercises, ${summary.templates} templates, " +
                             "${summary.sessions} workouts, ${summary.sets} sets.",
@@ -197,6 +199,3 @@ fun RecoveryScreen(
         )
     }
 }
-
-private fun formatRecoveryDate(epochMillis: Long): String =
-    Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate().toString()
