@@ -57,6 +57,7 @@ import com.buhat.tracker.domain.exerciseStats
 import com.buhat.tracker.domain.formatWeight
 import com.buhat.tracker.domain.kgToLb
 import com.buhat.tracker.domain.prSetIds
+import com.buhat.tracker.domain.rirLabel
 import com.buhat.tracker.ui.components.BuhatCard
 import com.buhat.tracker.ui.components.BuhatEmptyState
 import com.buhat.tracker.ui.components.BuhatLineChart
@@ -311,7 +312,7 @@ private fun WorkoutHistoryCard(
                     SetTypeBadge(set.setType)
                     Column(Modifier.weight(1f)) {
                         Text("${formatWeight(set.weightKg, unit)} × ${set.reps}")
-                        set.rir?.let { Text("RIR $it", style = MaterialTheme.typography.bodySmall) }
+                        set.rir?.let { Text("RIR ${rirLabel(it)}", style = MaterialTheme.typography.bodySmall) }
                     }
                     if (set.id in prs) PrBadge()
                 }

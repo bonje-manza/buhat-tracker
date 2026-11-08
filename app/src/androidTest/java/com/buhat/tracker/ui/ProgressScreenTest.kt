@@ -239,7 +239,7 @@ class ProgressScreenTest {
         compose.onNodeWithText("Bodyweight day", substring = true).assertExists()
     }
 
-    @Test fun profileAgeUnitsAndSelectedRangeSurviveRecreation() {
+    @Test fun profileUnitsAndSelectedRangeSurviveRecreation() {
         runBlocking {
             container.recordBenchWorkout()
             container.profileStore.save(Profile("Alex", "Male", 30, 72.0, 178))
@@ -247,8 +247,9 @@ class ProgressScreenTest {
             store.save(store.settings.first().copy(unit = WeightUnit.LB))
         }
         awaitValue("home-trend-latest", "235.2 lb")
-        compose.onNodeWithText("30 years", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText("158.7 lb", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("home-weight-value", useUnmergedTree = true).assertTextEquals("158.7 lb")
+        compose.onNodeWithTag("home-height-value", useUnmergedTree = true).assertTextEquals("5'10\"")
+        compose.onNodeWithText("30 years", useUnmergedTree = true).assertDoesNotExist()
         openProgress()
         compose.onNodeWithTag("segmented-1Y").performClick()
         compose.activityRule.scenario.recreate()
@@ -288,6 +289,53 @@ class ProgressScreenTest {
         repairSession()
         compose.onNodeWithTag("home-retry").performClick()
         awaitValue("home-trend-latest", "106.7 kg")
+    }
+
+    @Test fun homeBannerShowsTrainingSinceAndThreeEqualHeightStatCards() {
+        runBlocking {
+            container.profileStore.save(Profile("Alex", "Male", 30, 72.0, 178))
+            val repo = container.repository
+            val id = repo.startSession(seededId("template", "Push Day A"))
+            repo.logSet(repo.sessionExercises(id).first().first().id, SetType.WORKING, 80.0, 8, 2)
+            repo.finishSession(id)
+            // Captured fixture: the first workout finished 2024-11-16 12:00 UTC.
+            val finishedAt = 1_731_758_400_000L
+            val session = repo.session(id)!!
+            container.database.dao().updateSession(session.copy(startedAt = finishedAt - 1_000, finishedAt = finishedAt))
+        }
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("home-sessions-value"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        compose.onNodeWithText("Training since Nov 2024", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("Training since Nov 2024 · 1 workout", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("Gender / age", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("30 years", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("home-weight-value", useUnmergedTree = true).assertTextEquals("72 kg")
+        compose.onNodeWithTag("home-height-value", useUnmergedTree = true).assertTextEquals("178 cm")
+        compose.onNodeWithTag("home-sessions-value", useUnmergedTree = true).assertTextEquals("1 total")
+
+        val weight = compose.onNodeWithTag("home-weight-card", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val height = compose.onNodeWithTag("home-height-card", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val sessions = compose.onNodeWithTag("home-sessions-card", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(weight.height, height.height, 0.5f)
+        assertEquals(weight.height, sessions.height, 0.5f)
+        assertEquals(weight.top, height.top, 0.5f)
+        assertEquals(weight.top, sessions.top, 0.5f)
+    }
+
+    @Test fun progressHistoryRendersStoredRirFiveAsFourPlus() {
+        val id = runBlocking {
+            val repo = container.repository
+            val session = repo.startSession(seededId("template", "Push Day A"))
+            repo.logSet(repo.sessionExercises(session).first().first().id, SetType.WORKING, 80.0, 8, 5)
+            repo.finishSession(session)
+            session
+        }
+        compose.onNodeWithTag("tab-Progress").performClick()
+        awaitTag("progress-exercise-picker")
+        progressItem("history-$id").performClick()
+        compose.onNodeWithText("RIR 4+").assertExists()
     }
 
     private fun recordSingleSet(weight: Double, reps: Int, daysAgo: Int): String = runBlocking {

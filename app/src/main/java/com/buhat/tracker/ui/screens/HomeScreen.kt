@@ -9,8 +9,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,6 +42,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.HomeDashboard
@@ -51,8 +56,9 @@ import com.buhat.tracker.domain.DAY_MILLIS
 import com.buhat.tracker.domain.HOME_WINDOW_DAYS
 import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.e1rmTrend
-import com.buhat.tracker.domain.fourWeekStats
+import com.buhat.tracker.domain.formatHeight
 import com.buhat.tracker.domain.formatWeight
+import com.buhat.tracker.domain.fourWeekStats
 import com.buhat.tracker.domain.homeAnalyticsNow
 import com.buhat.tracker.domain.shouldRemindBackup
 import com.buhat.tracker.ui.BackupController
@@ -197,17 +203,29 @@ fun HomeScreen(
                 }
             }
             Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 ProfileTile(
-                    "Gender / age", profile.gender ?: "—", Modifier.weight(1f),
-                    profile.age?.let { "$it years" } ?: "Age —",
+                    label = "Weight",
+                    value = profile.weightKg?.let { formatWeight(it, loaded.unit) } ?: "—",
+                    valueTag = "home-weight-value",
+                    modifier = Modifier.weight(1f).fillMaxHeight().testTag("home-weight-card"),
                 )
                 ProfileTile(
-                    "Weight",
-                    profile.weightKg?.let { formatWeight(it, loaded.unit) } ?: "—",
-                    Modifier.weight(1f),
+                    label = "Height",
+                    value = profile.heightCm?.let { formatHeight(it, loaded.unit) } ?: "—",
+                    valueTag = "home-height-value",
+                    modifier = Modifier.weight(1f).fillMaxHeight().testTag("home-height-card"),
                 )
-                ProfileTile("Height", profile.heightCm?.let { "$it cm" } ?: "—", Modifier.weight(1f))
+                ProfileTile(
+                    label = "Sessions",
+                    value = dashboard.profileStats.totalWorkouts.toString(),
+                    suffix = "total",
+                    valueTag = "home-sessions-value",
+                    modifier = Modifier.weight(1f).fillMaxHeight().testTag("home-sessions-card"),
+                )
             }
         }
         if (backupStatus.loaded &&
@@ -295,12 +313,17 @@ fun HomeScreen(
 private fun trainingSummary(stats: ProfileStats): String {
     val first = stats.firstFinishedAt ?: return "No workouts yet"
     val month = SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(Date(first))
-    val workouts = if (stats.totalWorkouts == 1) "1 workout" else "${stats.totalWorkouts} workouts"
-    return "Training since $month · $workouts"
+    return "Training since $month"
 }
 
 @Composable
-private fun ProfileTile(label: String, value: String, modifier: Modifier = Modifier, detail: String? = null) {
+private fun ProfileTile(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    suffix: String? = null,
+    valueTag: String? = null,
+) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
@@ -313,11 +336,21 @@ private fun ProfileTile(label: String, value: String, modifier: Modifier = Modif
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            text = value,
+            text = buildAnnotatedString {
+                append(value)
+                suffix?.let {
+                    withStyle(
+                        SpanStyle(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                        ),
+                    ) { append(" $it") }
+                }
+            },
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleMedium,
+            modifier = valueTag?.let { Modifier.testTag(it) } ?: Modifier,
         )
-        detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 

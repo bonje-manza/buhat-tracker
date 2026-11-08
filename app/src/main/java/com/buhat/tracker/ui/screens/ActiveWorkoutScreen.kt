@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -78,6 +80,7 @@ import com.buhat.tracker.domain.numberWorkingSets
 import com.buhat.tracker.domain.prefillFor
 import com.buhat.tracker.domain.restRemainingMillis
 import com.buhat.tracker.domain.restDeadlineElapsed
+import com.buhat.tracker.domain.rirLabel
 import com.buhat.tracker.domain.sourceSetForPosition
 import com.buhat.tracker.timer.RestTimer
 import com.buhat.tracker.ui.components.BuhatCard
@@ -95,6 +98,7 @@ import kotlinx.coroutines.withContext
 
 private val SET_TYPES = listOf(SetType.WARMUP, SetType.WORKING, SetType.FAILURE)
 private val SET_TYPE_LABELS = SET_TYPES.map { it.label }
+private val RIR_CHOICES = listOf(0, 1, 2, 3, 4)
 
 @Composable
 fun ActiveWorkoutScreen(repository: BuhatRepository, restTimer: RestTimer, onStartWorkout: () -> Unit) {
@@ -468,7 +472,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             )
             if (exercise.targetRir != null) {
                 Text(
-                    text = "Target RIR ${exercise.targetRir}",
+                    text = "Target RIR ${rirLabel(exercise.targetRir)}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -521,7 +525,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                 )
                 set.rir?.let {
                     Text(
-                        text = "RIR $it",
+                        text = "RIR ${rirLabel(it)}",
                         color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -554,6 +558,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             onRirChange = { rir = it },
             unit = unit,
         )
+        Spacer(Modifier.height(16.dp))
         Button(
             onClick = ::log,
             modifier = Modifier
@@ -788,29 +793,48 @@ private fun SetFields(
         tag = "${tagPrefix}reps-input",
     )
     Spacer(Modifier.height(8.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = "RIR",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
-        )
-        StepButton("−", "${tagPrefix}rir-minus") { onRirChange((rir - 1).coerceIn(0, 5)) }
-        Text(
-            text = rir.toString(),
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleLarge,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.width(56.dp),
-        )
-        StepButton("+", "${tagPrefix}rir-plus") { onRirChange((rir + 1).coerceIn(0, 5)) }
-    }
-    Spacer(Modifier.height(4.dp))
     Text(
         text = "RIR · 0 = failure, 1 = one more rep possible",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall,
     )
+    Spacer(Modifier.height(8.dp))
+    RirSelector(rir, onRirChange, tagPrefix)
+}
+
+@Composable
+private fun RirSelector(rir: Int, onRirChange: (Int) -> Unit, tagPrefix: String) {
+    val selectedValue = rir.coerceAtMost(4)
+    Row(
+        modifier = Modifier.selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RIR_CHOICES.forEach { value ->
+            val selected = value == selectedValue
+            val label = if (value == 4) "4+" else value.toString()
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.surfaceContainerLow,
+                    )
+                    .selectable(selected = selected, role = Role.RadioButton) { onRirChange(value) }
+                    .testTag("${tagPrefix}rir-$label")
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    color = if (selected) MaterialTheme.colorScheme.background
+                    else MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+        }
+    }
 }
 
 @Composable

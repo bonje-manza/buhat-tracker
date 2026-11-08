@@ -30,6 +30,9 @@ fun validateSet(weightKg: Double, reps: Int, rir: Int?): String? = when {
     else -> null
 }
 
+/** Stored 4 and 5 share the top selector choice. */
+fun rirLabel(rir: Int): String = if (rir >= 4) "4+" else rir.toString()
+
 fun formatElapsed(startedAt: Long, now: Long): String {
     val totalSeconds = (now - startedAt).coerceAtLeast(0) / 1000
     val hours = totalSeconds / 3600

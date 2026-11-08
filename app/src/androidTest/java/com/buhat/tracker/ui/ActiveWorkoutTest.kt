@@ -3,6 +3,7 @@ package com.buhat.tracker.ui
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -19,8 +20,10 @@ import com.buhat.tracker.BuhatApplication
 import com.buhat.tracker.MainActivity
 import com.buhat.tracker.data.seededId
 import com.buhat.tracker.domain.SetType
+import com.buhat.tracker.domain.TemplateExerciseDraft
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestRule
@@ -90,6 +93,90 @@ class ActiveWorkoutTest {
     fun loggingCardCarriesTheDesignRirHint() {
         startPushDayA()
         compose.onNodeWithText("RIR · 0 = failure, 1 = one more rep possible").assertExists()
+    }
+
+    @Test
+    fun rirSelectorOffersExactlyZeroThroughFourPlus() {
+        startPushDayA()
+        for (tag in listOf("rir-0", "rir-1", "rir-2", "rir-3", "rir-4+")) {
+            compose.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+        }
+        compose.onNodeWithTag("rir-5").assertDoesNotExist()
+        compose.onNodeWithTag("rir-2").assertIsSelected()
+    }
+
+    @Test
+    fun loggingFourPlusStoresFourAndTheRowReadsFourPlus() {
+        startPushDayA()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("rir-4+").performScrollTo().performClick()
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+
+        awaitTag("set-row-1")
+        compose.onNodeWithText("RIR 4+").assertExists()
+        val stored = runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.activeSession().first()!!
+            val exercise = repo.sessionExercises(session.id).first().first()
+            repo.loggedSets(exercise.id).first().single().rir
+        }
+        assertEquals(4, stored)
+    }
+
+    @Test
+    fun storedRirFiveRendersAsFourPlusInTheLoggedRow() {
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.startSession(seededId("template", "Push Day A"))
+            val bench = repo.sessionExercises(session).first().first()
+            repo.logSet(bench.id, SetType.WORKING, weightKg = 80.0, reps = 8, rir = 5)
+        }
+        compose.onNodeWithTag("tab-Active").performClick()
+
+        awaitTag("set-row-1")
+        compose.onNodeWithText("RIR 4+").assertExists()
+    }
+
+    @Test
+    fun targetCardRendersStoredFiveAsFourPlus() {
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val template = repo.saveTemplate(
+                id = null,
+                name = "RIR five day",
+                exercises = listOf(
+                    TemplateExerciseDraft(
+                        exerciseId = seededId("exercise", "Bench Press"),
+                        workingSets = 1,
+                        repMin = 6,
+                        repMax = 8,
+                        targetRir = 5,
+                    ),
+                ),
+            )
+            repo.startSession(template)
+        }
+        compose.onNodeWithTag("tab-Active").performClick()
+
+        awaitTag("target-card")
+        compose.onNodeWithText("Target RIR 4+").assertExists()
+    }
+
+    @Test
+    fun setEditDialogUsesTheSameFourPlusSelector() {
+        startPushDayA()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+
+        awaitTag("set-row-1")
+        compose.onNodeWithTag("set-row-1").performScrollTo().performClick()
+        for (tag in listOf("edit-rir-0", "edit-rir-1", "edit-rir-2", "edit-rir-3", "edit-rir-4+")) {
+            compose.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+        }
+        compose.onNodeWithTag("edit-rir-5").assertDoesNotExist()
+        compose.onNodeWithTag("edit-rir-2").assertIsSelected()
     }
 
     @Test

@@ -169,6 +169,7 @@ class SettingsScreenTest {
         awaitTag("start-workout-Push Day A")
         compose.onNodeWithTag("start-workout-Push Day A").performClick()
         compose.onNodeWithTag("tab-Home").performClick()
+        awaitTag("settings-button")
         compose.onNodeWithTag("settings-button").performClick()
 
         compose.onNodeWithTag("export-data").assertIsNotEnabled()
@@ -193,6 +194,7 @@ class SettingsScreenTest {
         compose.onNodeWithTag("tab-Active").performClick()
         awaitText("target-value", "60 kg × 8")
         compose.onNodeWithTag("tab-Home").performClick()
+        awaitTag("settings-button")
         compose.onNodeWithTag("settings-button").performClick()
         compose.onNodeWithTag("segmented-Same template").performScrollTo().performClick()
         compose.waitUntil(5_000) {

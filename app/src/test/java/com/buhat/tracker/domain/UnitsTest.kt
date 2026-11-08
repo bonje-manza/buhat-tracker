@@ -30,6 +30,17 @@ class UnitsTest {
     }
 
     @Test
+    fun formatsHeightInTheSelectedUnit() {
+        // 178 cm / 2.54 = 70.08 in, nearest inch 70 = 5'10".
+        assertEquals("178 cm", formatHeight(178, WeightUnit.KG))
+        assertEquals("5'10\"", formatHeight(178, WeightUnit.LB))
+        // 171 cm / 2.54 = 67.32 in, nearest inch 67 = 5'7".
+        assertEquals("5'7\"", formatHeight(171, WeightUnit.LB))
+        // 180 cm / 2.54 = 70.87 in, nearest inch 71 = 5'11".
+        assertEquals("5'11\"", formatHeight(180, WeightUnit.LB))
+    }
+
+    @Test
     fun formatKgTrimsTrailingZeros() {
         assertEquals("80", formatKg(80.0))
         assertEquals("82.5", formatKg(82.5))

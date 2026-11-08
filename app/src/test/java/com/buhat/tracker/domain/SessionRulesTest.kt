@@ -97,6 +97,14 @@ class SessionRulesTest {
     }
 
     @Test
+    fun rirFourAndAboveRenderAsFourPlus() {
+        assertEquals("0", rirLabel(0))
+        assertEquals("3", rirLabel(3))
+        assertEquals("4+", rirLabel(4))
+        assertEquals("4+", rirLabel(5))
+    }
+
+    @Test
     fun elapsedShowsMinutesThenHours() {
         assertEquals("0:00", formatElapsed(startedAt = 1_000, now = 1_000))
         assertEquals(
