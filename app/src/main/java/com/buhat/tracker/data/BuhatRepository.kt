@@ -20,6 +20,7 @@ import com.buhat.tracker.domain.HistorySession
 import com.buhat.tracker.domain.LoggedSetRecord
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
+import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.countsForProgression
 import com.buhat.tracker.domain.homeWindowStart
 import com.buhat.tracker.domain.priorWindowStart
@@ -166,6 +167,22 @@ class BuhatRepository(
             ),
         )
         return existing.id
+    }
+
+    suspend fun saveExercisePreferences(
+        exerciseId: String,
+        unitOverride: String?,
+        restWorkingSecondsOverride: Int?,
+    ) {
+        if (unitOverride != null && WeightUnit.entries.none { it.name == unitOverride }) {
+            throw ContentValidationException("Unit must be KG or LB.")
+        }
+        if (restWorkingSecondsOverride != null && restWorkingSecondsOverride !in 0..600) {
+            throw ContentValidationException("Rest must be 0 to 600 seconds.")
+        }
+        if (database.dao().updateExercisePreferences(exerciseId, unitOverride, restWorkingSecondsOverride) == 0) {
+            throw ContentValidationException("Exercise not found.")
+        }
     }
 
     suspend fun archiveExercise(id: String) {

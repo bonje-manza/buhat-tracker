@@ -84,6 +84,11 @@ interface BuhatDao {
     @Update
     suspend fun updateExercise(exercise: Exercise)
 
+    @Query(
+        "UPDATE Exercise SET weightUnitOverride = :unit, restWorkingSecondsOverride = :rest WHERE id = :id",
+    )
+    suspend fun updateExercisePreferences(id: String, unit: String?, rest: Int?): Int
+
     @Update
     suspend fun updateTemplate(template: Template)
 

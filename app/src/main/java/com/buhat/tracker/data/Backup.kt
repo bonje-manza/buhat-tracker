@@ -21,10 +21,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.encodeToJsonElement
 import java.util.UUID
 
-const val BACKUP_FORMAT_VERSION = 1
+const val BACKUP_FORMAT_VERSION = 2
 const val MAX_BACKUP_BYTES = 20 * 1024 * 1024
 
 class BackupException(message: String) : Exception(message)
@@ -58,6 +59,8 @@ data class BackupExercise(
     val isCustom: Boolean,
     @Required val archivedAt: Long? = null,
     val createdAt: Long,
+    @Required val weightUnitOverride: String? = null,
+    @Required val restWorkingSecondsOverride: Int? = null,
 )
 
 @Serializable
@@ -164,16 +167,29 @@ fun decodeBackup(text: String): Backup {
     val version = (obj["formatVersion"] as? JsonPrimitive)?.takeUnless { it.isString }?.content?.toIntOrNull()
         ?: throw BackupException(NOT_A_BACKUP)
     if (version > BACKUP_FORMAT_VERSION) throw BackupException(NEWER_VERSION)
-    if (version != BACKUP_FORMAT_VERSION) throw BackupException(NOT_A_BACKUP)
+    if (version !in 1..BACKUP_FORMAT_VERSION) throw BackupException(NOT_A_BACKUP)
 
+    val rootToDecode = if (version == 1) withFormat2ExerciseFields(obj) else obj
     val backup = try {
-        backupJson.decodeFromString<Backup>(root.toString())
+        backupJson.decodeFromString<Backup>(rootToDecode.toString())
     } catch (e: SerializationException) {
         throw BackupException(CORRUPT)
     }
-    validateJsonTypes(root, backupJson.encodeToJsonElement(backup))
+    validateJsonTypes(rootToDecode, backupJson.encodeToJsonElement(backup))
     validateBackup(backup)
     return backup
+}
+
+// Format 2 added two required exercise keys. A format-1 file predates them, so seed JSON null.
+private fun withFormat2ExerciseFields(root: JsonObject): JsonObject {
+    val exercises = root["exercises"] as? JsonArray ?: return root
+    val patched = exercises.map { element ->
+        val row = element as? JsonObject ?: return@map element
+        JsonObject(
+            row + ("weightUnitOverride" to JsonNull) + ("restWorkingSecondsOverride" to JsonNull),
+        )
+    }
+    return JsonObject(root + ("exercises" to JsonArray(patched)))
 }
 
 fun Backup.summary() = BackupSummary(exportedAt, exercises.size, templates.size, sessions.size, sets.size)
@@ -230,6 +246,10 @@ private fun validateBackup(backup: Backup) {
     backup.exercises.forEach {
         if (it.name.isBlank() || it.createdAt <= 0 || (it.archivedAt ?: it.createdAt) < it.createdAt) corrupt()
         if (listOf(it.name, it.muscleGroup, it.equipment).any { text -> text.length > MAX_TEXT_LENGTH }) outOfRange()
+        it.weightUnitOverride?.let { unit ->
+            runCatching { WeightUnit.valueOf(unit) }.getOrNull() ?: outOfRange()
+        }
+        it.restWorkingSecondsOverride?.let { rest -> if (rest !in 0..600) outOfRange() }
     }
     if (backup.exercises.map { it.name.lowercase() }.toSet().size != backup.exercises.size) {
         throw BackupException("This backup has duplicate exercise names.")
@@ -331,7 +351,10 @@ fun BackupSettings.toSettings() = Settings(
     restIncrementSeconds = restIncrementSeconds,
 )
 
-fun Exercise.toBackup() = BackupExercise(id, name, muscleGroup, equipment, isCustom, archivedAt, createdAt)
+fun Exercise.toBackup() = BackupExercise(
+    id, name, muscleGroup, equipment, isCustom, archivedAt, createdAt,
+    weightUnitOverride, restWorkingSecondsOverride,
+)
 
 fun BackupExercise.toExercise() = Exercise(
     id = id,
@@ -342,6 +365,8 @@ fun BackupExercise.toExercise() = Exercise(
     isCustom = isCustom,
     archivedAt = archivedAt,
     createdAt = createdAt,
+    weightUnitOverride = weightUnitOverride,
+    restWorkingSecondsOverride = restWorkingSecondsOverride,
 )
 
 fun Template.toBackup() = BackupTemplate(id, name, isPremade, createdAt, updatedAt, archivedAt)

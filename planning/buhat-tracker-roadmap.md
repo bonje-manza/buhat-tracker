@@ -756,13 +756,13 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Add `weightUnitOverride: String? = null` and `restWorkingSecondsOverride: Int? = null` to `Exercise`. Keep `nameLower` and every existing field unchanged.
-- [ ] Bump `BuhatDatabase` to version 3. Add `MIGRATION_2_3` with `ALTER TABLE Exercise ADD COLUMN weightUnitOverride TEXT` and `ALTER TABLE Exercise ADD COLUMN restWorkingSecondsOverride INTEGER`. Register both migrations. Commit the generated `3.json`.
-- [ ] Extend `BackupExercise` with `@Required val weightUnitOverride: String? = null` and `@Required val restWorkingSecondsOverride: Int? = null`. Extend `Exercise.toBackup()` and `BackupExercise.toExercise()`.
-- [ ] Bump `BACKUP_FORMAT_VERSION` to 2. `decodeBackup` accepts 1 and 2. For a version-1 file, add both keys with JSON null to every exercise object, then use that patched root for both decoding and `validateJsonTypes`. Export writes version 2 only.
-- [ ] Validate the new fields: unit override is null, `"KG"`, or `"LB"`; rest override is null or 0..600.
-- [ ] Add `saveExercisePreferences(exerciseId, unitOverride, restWorkingSecondsOverride)` to the repository. It updates only the two columns, validates rest, and works for premade and custom rows.
-- [ ] Add unit tests for effective-unit fallback, v1 import defaults, v2 round trip, and invalid overrides. Add a migration test for 2->3 and the 1->3 chain.
+- [x] Add `weightUnitOverride: String? = null` and `restWorkingSecondsOverride: Int? = null` to `Exercise`. Keep `nameLower` and every existing field unchanged.
+- [x] Bump `BuhatDatabase` to version 3. Add `MIGRATION_2_3` with `ALTER TABLE Exercise ADD COLUMN weightUnitOverride TEXT` and `ALTER TABLE Exercise ADD COLUMN restWorkingSecondsOverride INTEGER`. Register both migrations. Commit the generated `3.json`.
+- [x] Extend `BackupExercise` with `@Required val weightUnitOverride: String? = null` and `@Required val restWorkingSecondsOverride: Int? = null`. Extend `Exercise.toBackup()` and `BackupExercise.toExercise()`.
+- [x] Bump `BACKUP_FORMAT_VERSION` to 2. `decodeBackup` accepts 1 and 2. For a version-1 file, add both keys with JSON null to every exercise object, then use that patched root for both decoding and `validateJsonTypes`. Export writes version 2 only.
+- [x] Validate the new fields: unit override is null, `"KG"`, or `"LB"`; rest override is null or 0..600.
+- [x] Add `saveExercisePreferences(exerciseId, unitOverride, restWorkingSecondsOverride)` to the repository. It updates only the two columns, validates rest, and works for premade and custom rows.
+- [x] Add unit tests for v1 import defaults, v2 round trip, and invalid overrides. Add a migration test for 2->3 and the 1->3 chain.
 
 **Acceptance checks**
 
@@ -771,6 +771,8 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 - A format-2 backup round-trips overrides exactly.
 - Invalid unit strings or rest outside 0..600 are rejected before any write.
 - `.\gradlew.bat testDebugUnitTest --console=plain` passes, the migration device test passes, and `3.json` is committed.
+
+**Result:** 2026-11-08. Full E2E suite passes: 106 unit tests and 186 device tests, 0 failed. `Exercise` stores nullable `weightUnitOverride` and `restWorkingSecondsOverride`; database version 3 migrates 1->2->3 with both columns null on existing rows, and `3.json` is committed. Backup format 2 round-trips overrides, format-1 files import with null overrides, and invalid units or rest outside 0..600 are rejected before any write. `saveExercisePreferences` updates only the two columns for premade and custom rows. Effective-unit fallback stays in Phase 12, where the helper is introduced.
 
 ### Phase 12 - Per-exercise unit and working rest
 
@@ -936,4 +938,4 @@ None. Temurin JDK 21 is installed and `JAVA_HOME` points at it.
 
 ### Next step
 
-Phase 10 is complete. Start Phase 11: add the two `Exercise` override columns, the 2->3 migration, and backup format 2 with format-1 import. Export current app data and keep a format-1 backup before running the migration on the test phone.
+Phase 11 is complete. Start Phase 12: add the effective-unit and working-rest helpers, then use them in Active Workout, Exercise Library settings, Progress, and Home.

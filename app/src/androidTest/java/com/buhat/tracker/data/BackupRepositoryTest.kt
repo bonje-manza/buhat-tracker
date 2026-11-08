@@ -115,7 +115,7 @@ class BackupRepositoryTest {
         val json = repo.exportBackup()
         val backup = decodeBackup(json)
 
-        assertEquals(1, backup.formatVersion)
+        assertEquals(2, backup.formatVersion)
         assertEquals(57, backup.exercises.size)
         assertEquals(6, backup.templates.size)
         assertEquals(26, backup.templateExercises.size)
@@ -176,7 +176,7 @@ class BackupRepositoryTest {
     @Test
     fun newerVersionImportLeavesExistingDataUntouched() = runTest {
         val exported = repo.exportBackup()
-        val newer = exported.replace("\"formatVersion\": 1", "\"formatVersion\": 2")
+        val newer = exported.replace("\"formatVersion\": 2", "\"formatVersion\": 3")
         val before = counts()
 
         val error = assertThrows(BackupException::class.java) { runBlocking { repo.importBackup(newer) } }
@@ -249,6 +249,29 @@ class BackupRepositoryTest {
             source.close()
             target.close()
         }
+    }
+
+    @Test
+    fun exerciseOverridesSurviveExportAndImport() = runTest {
+        val bench = seededId("exercise", "Bench Press")
+        repo.saveExercisePreferences(bench, "LB", 180)
+
+        val exported = repo.exportBackup()
+        val empty = decodeBackup(exported).copy(
+            profile = BackupProfile(),
+            exercises = emptyList(),
+            templates = emptyList(),
+            templateExercises = emptyList(),
+            sessions = emptyList(),
+            sessionExercises = emptyList(),
+            sets = emptyList(),
+        )
+        repo.importBackup(encodeBackup(empty))
+        repo.importBackup(exported)
+
+        val restored = repo.exercise(bench)!!
+        assertEquals("LB", restored.weightUnitOverride)
+        assertEquals(180, restored.restWorkingSecondsOverride)
     }
 
     @Test fun preferenceWriteFailureIsReportedAndSameFileCanBeRetried() = runTest {

@@ -20,6 +20,8 @@ data class Exercise(
     val isCustom: Boolean,
     val archivedAt: Long? = null,
     val createdAt: Long,
+    val weightUnitOverride: String? = null,
+    val restWorkingSecondsOverride: Int? = null,
 )
 
 @Entity(

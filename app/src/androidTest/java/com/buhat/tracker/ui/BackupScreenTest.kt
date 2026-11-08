@@ -119,7 +119,7 @@ class BackupScreenTest {
         for ((text, message) in listOf(
             "{}" to "not a Buhat backup",
             captured.take(captured.length / 2) to "corrupt",
-            captured.replace("\"formatVersion\": 1", "\"formatVersion\": 2") to "newer version",
+            captured.replace("\"formatVersion\": 1", "\"formatVersion\": 3") to "newer version",
         )) {
             file.writeText(text)
             click("import-data")

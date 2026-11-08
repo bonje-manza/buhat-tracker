@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionExercise::class,
         LoggedSet::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -33,6 +33,12 @@ abstract class BuhatDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS index_WorkoutSession_status_finishedAt " +
                         "ON WorkoutSession(status, finishedAt)",
                 )
+            }
+        }
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE Exercise ADD COLUMN weightUnitOverride TEXT")
+                db.execSQL("ALTER TABLE Exercise ADD COLUMN restWorkingSecondsOverride INTEGER")
             }
         }
     }

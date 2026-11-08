@@ -8,6 +8,7 @@ import com.buhat.tracker.data.local.BuhatDatabase
 import java.util.UUID
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -84,6 +85,63 @@ class MigrationTest {
             assertTrue(indexes.contains("index_SessionExercise_exerciseId_sessionId"))
             assertTrue(indexes.contains("index_WorkoutSession_status_finishedAt"))
             // Every index that existed before the migration must survive it.
+            assertTrue(indexes.containsAll(V1_INDEX_NAMES))
+        }
+    }
+
+    @Test
+    fun migrate2To3KeepsRowsAndAddsNullOverrides() {
+        val name = newDatabaseName()
+
+        helper.createDatabase(name, 2).use { db ->
+            db.execSQL(
+                "INSERT INTO Exercise (id, name, nameLower, muscleGroup, equipment, isCustom, archivedAt, createdAt) " +
+                    "VALUES ('e1', 'Bench Press', 'bench press', 'Chest', 'Barbell', 0, NULL, 1)",
+            )
+            db.execSQL(
+                "INSERT INTO WorkoutSession " +
+                    "(id, templateIdSnapshot, templateNameSnapshot, startedAt, finishedAt, status) " +
+                    "VALUES ('s1', 't1', 'Push Day A', 1, 2, 'FINISHED')",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(name, 3, true, BuhatDatabase.MIGRATION_2_3)
+
+        migrated.use { db ->
+            assertEquals(1, db.count("Exercise"))
+            assertEquals("Bench Press", db.singleString("SELECT name FROM Exercise WHERE id = 'e1'"))
+            assertEquals(1, db.count("WorkoutSession"))
+            assertEquals(
+                "Push Day A",
+                db.singleString("SELECT templateNameSnapshot FROM WorkoutSession WHERE id = 's1'"),
+            )
+            assertNull(db.singleString("SELECT weightUnitOverride FROM Exercise WHERE id = 'e1'"))
+            assertNull(db.singleString("SELECT restWorkingSecondsOverride FROM Exercise WHERE id = 'e1'"))
+        }
+    }
+
+    @Test
+    fun migrate1To3RunsTheWholeChain() {
+        val name = newDatabaseName()
+
+        helper.createDatabase(name, 1).use { db ->
+            db.execSQL(
+                "INSERT INTO Exercise (id, name, nameLower, muscleGroup, equipment, isCustom, archivedAt, createdAt) " +
+                    "VALUES ('e1', 'Bench Press', 'bench press', 'Chest', 'Barbell', 0, NULL, 1)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            name, 3, true, BuhatDatabase.MIGRATION_1_2, BuhatDatabase.MIGRATION_2_3,
+        )
+
+        migrated.use { db ->
+            assertEquals("Bench Press", db.singleString("SELECT name FROM Exercise WHERE id = 'e1'"))
+            assertNull(db.singleString("SELECT weightUnitOverride FROM Exercise WHERE id = 'e1'"))
+            assertNull(db.singleString("SELECT restWorkingSecondsOverride FROM Exercise WHERE id = 'e1'"))
+            val indexes = db.indexNames()
+            assertTrue(indexes.contains("index_SessionExercise_exerciseId_sessionId"))
+            assertTrue(indexes.contains("index_WorkoutSession_status_finishedAt"))
             assertTrue(indexes.containsAll(V1_INDEX_NAMES))
         }
     }

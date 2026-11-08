@@ -234,6 +234,45 @@ class ContentRepositoryTest {
     }
 
     @Test
+    fun exercisePreferencesSaveForPremadeAndCustomRowsWithoutTouchingOtherFields() = runTest {
+        val bench = premadeExercise("Bench Press")
+        val customId = repo.saveExercise(null, "Belt Squat", "Quads", "Machine")
+
+        repo.saveExercisePreferences(bench.id, "LB", 180)
+        repo.saveExercisePreferences(customId, null, 0)
+
+        val benchAfter = repo.exercise(bench.id)!!
+        assertEquals("Bench Press", benchAfter.name)
+        assertEquals("Chest", benchAfter.muscleGroup)
+        assertEquals("Barbell", benchAfter.equipment)
+        assertEquals("LB", benchAfter.weightUnitOverride)
+        assertEquals(180, benchAfter.restWorkingSecondsOverride)
+
+        val customAfter = repo.exercise(customId)!!
+        assertNull(customAfter.weightUnitOverride)
+        assertEquals(0, customAfter.restWorkingSecondsOverride)
+    }
+
+    @Test
+    fun invalidExercisePreferencesAreRejectedBeforeAnyWrite() = runTest {
+        val bench = premadeExercise("Bench Press")
+
+        suspend fun errorFor(unit: String?, rest: Int?): String? =
+            try {
+                repo.saveExercisePreferences(bench.id, unit, rest)
+                null
+            } catch (e: ContentValidationException) {
+                e.message
+            }
+
+        assertEquals("Unit must be KG or LB.", errorFor("stone", null))
+        assertEquals("Rest must be 0 to 600 seconds.", errorFor(null, -1))
+        assertEquals("Rest must be 0 to 600 seconds.", errorFor(null, 601))
+        assertNull(repo.exercise(bench.id)!!.weightUnitOverride)
+        assertNull(repo.exercise(bench.id)!!.restWorkingSecondsOverride)
+    }
+
+    @Test
     fun templateCardsCarryCountsAndExerciseNamesInOrder() = runTest {
         val push = repo.templateCards().first().single { it.template.name == "Push Day A" }
 

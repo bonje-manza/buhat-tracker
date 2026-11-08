@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlinx.serialization.json.Json
 
 class BackupTest {
 
@@ -13,7 +12,7 @@ class BackupTest {
     private val createdAt = 1793694030009L
     private val finishedAt = 1793694030218L
     private val otherId = "00000000-0000-4000-8000-000000000001"
-    private fun validBackup(): Backup = Json.decodeFromString(captured)
+    private fun validBackup(): Backup = decodeBackup(captured)
 
     private fun assertRejected(text: String, fragment: String) {
         val error = assertThrows(BackupException::class.java) { decodeBackup(text) }
@@ -70,9 +69,73 @@ class BackupTest {
 
     @Test
     fun `a newer format version is rejected`() {
-        val json = encodeBackup(validBackup()).replace("\"formatVersion\": 1", "\"formatVersion\": 2")
+        val json = encodeBackup(validBackup()).replace("\"formatVersion\": 1", "\"formatVersion\": 3")
 
         assertRejected(json, "newer version")
+    }
+
+    @Test
+    fun `a format 1 backup imports with null overrides`() {
+        val decoded = decodeBackup(captured)
+
+        assertEquals(null, decoded.exercises.single().weightUnitOverride)
+        assertEquals(null, decoded.exercises.single().restWorkingSecondsOverride)
+    }
+
+    @Test
+    fun `a format 1 backup discards keys that format 2 added`() {
+        val json = captured.replace(
+            """"isCustom": true,""",
+            """"isCustom": true,
+            "weightUnitOverride": "stone",
+            "restWorkingSecondsOverride": 601,""",
+        )
+
+        val decoded = decodeBackup(json)
+
+        assertEquals(null, decoded.exercises.single().weightUnitOverride)
+        assertEquals(null, decoded.exercises.single().restWorkingSecondsOverride)
+    }
+
+    @Test
+    fun `a format 2 backup round trips overrides exactly`() {
+        val original = validBackup()
+        val backup = original.copy(
+            formatVersion = 2,
+            exercises = listOf(
+                original.exercises.single().copy(
+                    weightUnitOverride = "LB",
+                    restWorkingSecondsOverride = 180,
+                ),
+            ),
+        )
+
+        val decoded = decodeBackup(encodeBackup(backup))
+
+        assertEquals(2, decoded.formatVersion)
+        assertEquals("LB", decoded.exercises.single().weightUnitOverride)
+        assertEquals(180, decoded.exercises.single().restWorkingSecondsOverride)
+    }
+
+    @Test
+    fun `format 2 requires the override keys`() {
+        val json = encodeBackup(validBackup().copy(formatVersion = 2))
+
+        assertRejected(json.replace(Regex(""",\s*"weightUnitOverride": null"""), ""), "corrupt")
+        assertRejected(json.replace(Regex(""",\s*"restWorkingSecondsOverride": null"""), ""), "corrupt")
+    }
+
+    @Test
+    fun `invalid exercise overrides are rejected`() {
+        val original = validBackup()
+        val exercise = original.exercises.single()
+        for (invalid in listOf(
+            original.copy(exercises = listOf(exercise.copy(weightUnitOverride = "stone"))),
+            original.copy(exercises = listOf(exercise.copy(restWorkingSecondsOverride = -1))),
+            original.copy(exercises = listOf(exercise.copy(restWorkingSecondsOverride = 601))),
+        )) {
+            assertRejected(encodeBackup(invalid.copy(formatVersion = 2)), "outside the allowed range")
+        }
     }
 
     @Test
