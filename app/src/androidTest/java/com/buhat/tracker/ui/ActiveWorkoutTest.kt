@@ -1,5 +1,6 @@
 package com.buhat.tracker.ui
 
+import android.Manifest
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.buhat.tracker.BuhatApplication
 import com.buhat.tracker.MainActivity
 import com.buhat.tracker.data.seededId
@@ -25,6 +27,8 @@ import com.buhat.tracker.domain.lbToKg
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestRule
@@ -51,6 +55,14 @@ class ActiveWorkoutTest {
 
     @get:Rule(order = 1)
     val compose = createAndroidComposeRule<MainActivity>()
+
+    @Before
+    fun grantNotifications() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
+            ApplicationProvider.getApplicationContext<BuhatApplication>().packageName,
+            Manifest.permission.POST_NOTIFICATIONS,
+        )
+    }
 
     private fun startPushDayA() {
         compose.onNodeWithTag("tab-Workouts").performClick()
@@ -303,6 +315,56 @@ class ActiveWorkoutTest {
 
         compose.onNodeWithTag("exercise-chip-Bench Press").performScrollTo().performClick()
         awaitText("100 lb × 8")
+    }
+
+    @Test
+    fun targetCardSettingsChangesUnitMidSessionWithoutTouchingTheLoggedSetOrRest() {
+        seedPreviousBenchSession()
+        runBlocking {
+            ApplicationProvider.getApplicationContext<BuhatApplication>().container.settingsStore
+                .update { it.copy(restWorkingSeconds = 120) }
+        }
+        startPushDayA()
+        awaitText("82.5 kg × 6")
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("10")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+
+        val restBefore = runBlocking {
+            ApplicationProvider.getApplicationContext<BuhatApplication>().container
+                .settingsStore.settings.first().restEndsAt
+        }
+        assertNotNull(restBefore)
+
+        compose.onNodeWithTag("target-exercise-settings").performScrollTo().performClick()
+        awaitTag("exercise-settings")
+        compose.onNodeWithTag("segmented-lb").performClick()
+        compose.onNodeWithTag("pref-rest-value-plus").performClick()
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("exercise-settings")).fetchSemanticsNodes().isEmpty()
+        }
+
+        // The logged 80 kg now reads 176.4 lb; the next target adds 5 lb. The running rest is untouched.
+        awaitText("181.4 lb × 6")
+        compose.onNodeWithText("Top of range reached. Add 5 lb, restart at 6.").assertExists()
+        compose.onNodeWithTag("weight-input").assertTextContains("176.4")
+
+        val after = runBlocking {
+            val app = ApplicationProvider.getApplicationContext<BuhatApplication>()
+            val session = app.container.repository.activeSession().first()!!
+            val exercise = app.container.repository.sessionExercises(session.id).first().first()
+            Triple(
+                app.container.repository.exercise(exercise.exerciseId)!!,
+                app.container.repository.loggedSets(exercise.id).first().single().weightKg,
+                app.container.settingsStore.settings.first().restEndsAt,
+            )
+        }
+        assertEquals("LB", after.first.weightUnitOverride)
+        assertEquals(135, after.first.restWorkingSecondsOverride)
+        assertEquals(80.0, after.second, 0.0001)
+        assertEquals(restBefore, after.third)
     }
 
     @Test

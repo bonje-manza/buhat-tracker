@@ -33,6 +33,7 @@ import com.buhat.tracker.data.seededId
 import com.buhat.tracker.ui.theme.BuhatTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -301,6 +302,25 @@ class ScreenTest {
         assertEquals("Bench Press", bench.name)
         assertEquals("Chest", bench.muscleGroup)
         assertEquals("Barbell", bench.equipment)
+
+        // Reopen and clear both overrides: Default unit and Use default rest.
+        compose.onNodeWithTag("exercise-menu-Bench Press").performClick()
+        awaitMenuItem("Exercise settings")
+        compose.onNodeWithText("Exercise settings").performClick()
+        awaitTag("exercise-settings")
+        compose.onNodeWithTag("segmented-Default").performClick()
+        compose.onNodeWithTag("pref-rest-default").performClick()
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("exercise-settings")).fetchSemanticsNodes().isEmpty()
+        }
+
+        val cleared = runBlocking {
+            ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+                .exercise(seededId("exercise", "Bench Press"))!!
+        }
+        assertNull(cleared.weightUnitOverride)
+        assertNull(cleared.restWorkingSecondsOverride)
     }
 
     @Test

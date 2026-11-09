@@ -265,13 +265,15 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
 
     // Prefill keys include the source values: history flows in after the first frame, and the
     // form must adopt them without wiping a user edit (prefill only changes on new data).
-    var weightText by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps, unit) {
+    var weightText by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps) {
         mutableStateOf(prefill.weightKg?.let { formatWeightValue(it, unit) } ?: "")
     }
     // kg keeps generated values exact; parsing the rounded lb display back would drift.
-    var weightKg by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps, unit) {
+    var weightKg by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps) {
         mutableStateOf(prefill.weightKg)
     }
+    // A unit change only reformats the display, so a typed weight survives the switch.
+    LaunchedEffect(unit) { weightText = weightKg?.let { formatWeightValue(it, unit) } ?: "" }
     var repsText by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps) {
         mutableStateOf(prefill.reps?.toString() ?: "")
     }
