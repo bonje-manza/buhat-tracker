@@ -1,5 +1,6 @@
 package com.buhat.tracker.domain
 
+import com.buhat.tracker.data.local.Exercise
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.roundToInt
@@ -12,6 +13,12 @@ enum class WeightUnit { KG, LB }
 fun kgToLb(kg: Double): Double = kg * KG_PER_LB
 
 fun lbToKg(lb: Double): Double = lb / KG_PER_LB
+
+fun Exercise.effectiveUnit(global: WeightUnit): WeightUnit =
+    weightUnitOverride?.let(WeightUnit::valueOf) ?: global
+
+fun weightIncrementKg(unit: WeightUnit): Double =
+    if (unit == WeightUnit.LB) lbToKg(5.0) else 2.5
 
 fun formatHeight(heightCm: Int, unit: WeightUnit): String = when (unit) {
     WeightUnit.KG -> "$heightCm cm"

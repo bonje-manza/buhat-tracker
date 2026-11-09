@@ -1,10 +1,21 @@
 package com.buhat.tracker.domain
 
+import com.buhat.tracker.data.local.Exercise
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class RestTimerTest {
+
+    private fun exercise(rest: Int?) = Exercise(
+        id = "bench",
+        name = "Bench Press",
+        muscleGroup = "Chest",
+        equipment = "Barbell",
+        isCustom = false,
+        createdAt = 0L,
+        restWorkingSecondsOverride = rest,
+    )
 
     @Test
     fun eachSetTypeUsesItsConfiguredDefault() {
@@ -52,5 +63,21 @@ class RestTimerTest {
         assertEquals("0:59", formatRestSeconds(59))
         assertEquals("1:00", formatRestSeconds(60))
         assertEquals("10:00", formatRestSeconds(600))
+    }
+
+    @Test
+    fun workingOverrideWinsButWarmupAndFailureStayGlobal() {
+        val working = exercise(rest = 180).effectiveWorkingRest(120)
+
+        assertEquals(180, restSecondsFor(SetType.WORKING, 60, working, 180))
+        assertEquals(60, restSecondsFor(SetType.WARMUP, 60, working, 180))
+        assertEquals(180, restSecondsFor(SetType.FAILURE, 60, working, 180))
+    }
+
+    @Test
+    fun nullOverrideFallsBackToGlobalAndZeroIsKept() {
+        assertEquals(120, exercise(rest = null).effectiveWorkingRest(120))
+        assertEquals(0, exercise(rest = 0).effectiveWorkingRest(120))
+        assertEquals(0, restSecondsFor(SetType.WORKING, 60, exercise(rest = 0).effectiveWorkingRest(120), 180))
     }
 }

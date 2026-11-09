@@ -232,4 +232,42 @@ class ProgressionTest {
         assertNull(target.weightKg)
         assertEquals(6, target.reps)
     }
+
+    @Test
+    fun lbTopOfRangeAddsFivePounds() {
+        // 135 lb stored as kilograms; adding 5 lb gives 140 lb.
+        val target = nextTarget(
+            set("top", weight = lbToKg(135.0), reps = 10),
+            repMin = 6,
+            repMax = 10,
+            unit = WeightUnit.LB,
+        )
+
+        assertEquals(140.0, kgToLb(target.weightKg!!), 0.0001)
+        assertEquals(6, target.reps)
+        assertEquals("Top of range reached. Add 5 lb, restart at 6.", target.message)
+    }
+
+    @Test
+    fun lbBelowTopMessageUsesPounds() {
+        val target = nextTarget(
+            set("mid", weight = lbToKg(135.0), reps = 9),
+            repMin = 6,
+            repMax = 10,
+            unit = WeightUnit.LB,
+        )
+
+        assertEquals(135.0, kgToLb(target.weightKg!!), 0.0001)
+        assertEquals(10, target.reps)
+        assertEquals("Beat 9 reps at 135 lb.", target.message)
+    }
+
+    @Test
+    fun lbBodyweightStillNeverAddsWeight() {
+        val target = nextTarget(set("b", weight = 0.0, reps = 10), repMin = 6, repMax = 10, unit = WeightUnit.LB)
+
+        assertEquals(0.0, target.weightKg!!, 0.0)
+        assertEquals(10, target.reps)
+        assertEquals("Beat 10 reps.", target.message)
+    }
 }

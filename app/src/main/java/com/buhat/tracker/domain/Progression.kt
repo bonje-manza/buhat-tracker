@@ -57,10 +57,11 @@ fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int, unit: WeightU
     }
 
     if (source.reps >= repMax) {
+        val increment = weightIncrementKg(unit)
         return ProgressionTarget(
-            weightKg = source.weightKg + WEIGHT_INCREMENT_KG,
+            weightKg = source.weightKg + increment,
             reps = repMin,
-            message = "Top of range reached. Add ${formatWeight(WEIGHT_INCREMENT_KG, unit)}, restart at $repMin.",
+            message = "Top of range reached. Add ${formatWeight(increment, unit)}, restart at $repMin.",
         )
     }
 

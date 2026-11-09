@@ -1,6 +1,11 @@
 package com.buhat.tracker.domain
 
+import com.buhat.tracker.data.local.Exercise
+
 const val REST_SECONDS_MAX = 600
+
+fun Exercise.effectiveWorkingRest(globalSeconds: Int): Int =
+    restWorkingSecondsOverride ?: globalSeconds
 
 fun restSecondsFor(
     setType: SetType,

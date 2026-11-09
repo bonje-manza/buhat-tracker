@@ -1,9 +1,20 @@
 package com.buhat.tracker.domain
 
+import com.buhat.tracker.data.local.Exercise
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class UnitsTest {
+
+    private fun exercise(unit: String? = null) = Exercise(
+        id = "bench",
+        name = "Bench Press",
+        muscleGroup = "Chest",
+        equipment = "Barbell",
+        isCustom = false,
+        createdAt = 0L,
+        weightUnitOverride = unit,
+    )
 
     @Test
     fun convertsKilogramsToPounds() {
@@ -45,5 +56,19 @@ class UnitsTest {
         assertEquals("80", formatKg(80.0))
         assertEquals("82.5", formatKg(82.5))
         assertEquals("0", formatKg(0.0))
+    }
+
+    @Test
+    fun effectiveUnitUsesOverrideThenGlobal() {
+        assertEquals(WeightUnit.LB, exercise(unit = "LB").effectiveUnit(WeightUnit.KG))
+        assertEquals(WeightUnit.KG, exercise(unit = null).effectiveUnit(WeightUnit.KG))
+        assertEquals(WeightUnit.LB, exercise(unit = null).effectiveUnit(WeightUnit.LB))
+    }
+
+    @Test
+    fun weightIncrementFollowsTheUnit() {
+        assertEquals(2.5, weightIncrementKg(WeightUnit.KG), 0.0)
+        // 5 lb / 2.20462 = 2.26796... kg; 5 lb displayed back is exactly 5 lb.
+        assertEquals(2.26796, weightIncrementKg(WeightUnit.LB), 0.00001)
     }
 }
