@@ -782,15 +782,15 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Add `Exercise.effectiveUnit(global)` and `Exercise.effectiveWorkingRest(globalSeconds)`. Add `weightIncrementKg(unit)` returning 2.5 kg for kg and `lbToKg(5.0)` for lb.
-- [ ] Change `nextTarget` to use the unit-aware increment and to format its message with the effective unit.
-- [ ] Extend `restSecondsFor` or add a resolver: working uses the exercise override when non-null, else global; warmup and failure always global. Use it in `logSet`.
-- [ ] Active Workout: observe the selected exercise row; use the effective unit for target, prefill, logged rows, set editor, weight labels, and step buttons. Add the Settings button to the target card.
-- [ ] Build one Exercise Settings dialog and open it from the Exercise Library row menu and the Active target card. Unit: Default (current global), kg, lb. Working rest: Default (current global), 15-second steps 0..600, and "Use default". Save through `saveExercisePreferences`.
-- [ ] Exercise Library: show the menu on every row. Premade rows offer only Exercise settings; custom rows keep Edit, Archive, Delete, and Exercise settings.
-- [ ] Progress: use the selected exercise's effective unit for the e1RM chart, best e1RM, heaviest set, and past sets. Home: use the selected trend exercise's effective unit. Add a DAO flow for all exercises including archived rows so archived exercises keep their unit. Keep volume, body weight, and height on the global unit.
-- [ ] Update the Settings Units copy: kg steps 2.5 kg, lb steps 5 lb, and exercises can override the unit and working rest from Exercise settings.
-- [ ] Tests: unit helpers, kg and lb progression, rest resolution, dialog from both entry points, premade name unchanged, lb logging, override 0, global fallback, mixed units in one history list.
+- [x] Add `Exercise.effectiveUnit(global)` and `Exercise.effectiveWorkingRest(globalSeconds)`. Add `weightIncrementKg(unit)` returning 2.5 kg for kg and `lbToKg(5.0)` for lb.
+- [x] Change `nextTarget` to use the unit-aware increment and to format its message with the effective unit.
+- [x] Extend `restSecondsFor` or add a resolver: working uses the exercise override when non-null, else global; warmup and failure always global. Use it in `logSet`.
+- [x] Active Workout: observe the selected exercise row; use the effective unit for target, prefill, logged rows, set editor, weight labels, and step buttons. Add the Settings button to the target card.
+- [x] Build one Exercise Settings dialog and open it from the Exercise Library row menu and the Active target card. Unit: Default (current global), kg, lb. Working rest: Default (current global), 15-second steps 0..600, and "Use default". Save through `saveExercisePreferences`.
+- [x] Exercise Library: show the menu on every row. Premade rows offer only Exercise settings; custom rows keep Edit, Archive, Delete, and Exercise settings.
+- [x] Progress: use the selected exercise's effective unit for the e1RM chart, best e1RM, heaviest set, and past sets. Home: use the selected trend exercise's effective unit. Add a DAO flow for all exercises including archived rows so archived exercises keep their unit. Keep volume, body weight, and height on the global unit.
+- [x] Update the Settings Units copy: kg steps 2.5 kg, lb steps 5 lb, and exercises can override the unit and working rest from Exercise settings.
+- [x] Tests: unit helpers, kg and lb progression, rest resolution, dialog from both entry points, premade name unchanged, lb logging, override 0, global fallback, mixed units in one history list.
 
 **Acceptance checks**
 
@@ -800,6 +800,8 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 - Bench Press Progress uses lb; Home volume stays in the global unit.
 - A premade exercise's name, muscle group, and equipment cannot be changed. Changing the global unit does not change explicit overrides.
 - Changing a preference mid-session changes the next set and target, not logged sets or a running timer.
+
+**Result:** 2026-11-09. Full E2E suite passes: 113 unit tests and 195 device tests, 0 failed. `Exercise.effectiveUnit` and `effectiveWorkingRest` resolve overrides with global fallback, and `nextTarget` bumps 2.5 kg or 5 lb with a matching message. One Exercise Settings dialog opens from every Exercise Library row and the Active target card, and premade rows stay read-only. Logging applies the working-rest override to working sets only; a 0 override starts no rest. Active Workout, Progress, and Home render each exercise's effective unit, archived exercises keep theirs, and volume, body weight, and height stay global. No Room schema, DataStore key, or backup-format change.
 
 ### Phase 13 - Active workout exercise reorder
 
@@ -938,4 +940,4 @@ None. Temurin JDK 21 is installed and `JAVA_HOME` points at it.
 
 ### Next step
 
-Phase 11 is complete. Start Phase 12: add the effective-unit and working-rest helpers, then use them in Active Workout, Exercise Library settings, Progress, and Home.
+Phase 12 is complete. Start Phase 13: add session exercise reorder with DAO reads and position updates, the edit-order dialog, and persistence across finish and process death.
