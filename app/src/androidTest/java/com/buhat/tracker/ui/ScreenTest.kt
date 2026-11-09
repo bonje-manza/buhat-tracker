@@ -271,7 +271,7 @@ class ScreenTest {
     }
 
     @Test
-    fun premadeExerciseSettingsChangesUnitAndKeepsContent() {
+    fun premadeExerciseSettingsChangeUnitAndRestAndKeepContent() {
         openWorkouts()
         compose.onNodeWithTag("workouts-menu").performClick()
         clickMenuTag("open-library")
@@ -285,6 +285,8 @@ class ScreenTest {
 
         awaitTag("exercise-settings")
         compose.onNodeWithTag("segmented-lb").performClick()
+        // Default working rest is 2:00; one 15-second step makes it 2:15.
+        compose.onNodeWithTag("pref-rest-value-plus").performClick()
         compose.onNodeWithTag("save-exercise-prefs").performClick()
         compose.waitUntil(5_000) {
             compose.onAllNodes(hasTestTag("exercise-settings")).fetchSemanticsNodes().isEmpty()
@@ -295,6 +297,7 @@ class ScreenTest {
                 .exercise(seededId("exercise", "Bench Press"))!!
         }
         assertEquals("LB", bench.weightUnitOverride)
+        assertEquals(135, bench.restWorkingSecondsOverride!!)
         assertEquals("Bench Press", bench.name)
         assertEquals("Chest", bench.muscleGroup)
         assertEquals("Barbell", bench.equipment)

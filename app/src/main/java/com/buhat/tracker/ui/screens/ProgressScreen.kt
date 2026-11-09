@@ -120,7 +120,8 @@ fun ProgressScreen(
     // Snapshots keep archived/deleted exercises selectable without consulting mutable library names.
     val choices = remember(loaded) {
         (loaded?.choices.orEmpty().map { it.exerciseId to it.exerciseName } +
-            loaded?.exercises.orEmpty().map { it.id to it.name }).distinctBy { it.first }
+            loaded?.exercises.orEmpty().filter { it.archivedAt == null }.map { it.id to it.name })
+            .distinctBy { it.first }
     }
     // Prefer an exercise that has data when no explicit selection exists; skipped first exercises still stay pickable.
     val loggedIds = remember(loaded?.choices) {
