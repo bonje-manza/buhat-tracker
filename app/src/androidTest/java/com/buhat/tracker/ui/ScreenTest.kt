@@ -29,7 +29,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.buhat.tracker.BuhatApplication
 import com.buhat.tracker.MainActivity
+import com.buhat.tracker.data.seededId
 import com.buhat.tracker.ui.theme.BuhatTheme
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -265,6 +268,56 @@ class ScreenTest {
         compose.onNodeWithTag("exercise-menu-Belt Squat Machine").performClick()
         clickMenuItem("Archive exercise")
         compose.onNodeWithTag("exercise-row-Belt Squat Machine").assertDoesNotExist()
+    }
+
+    @Test
+    fun premadeExerciseSettingsChangesUnitAndKeepsContent() {
+        openWorkouts()
+        compose.onNodeWithTag("workouts-menu").performClick()
+        clickMenuTag("open-library")
+        awaitTag("exercise-menu-Bench Press")
+        compose.onNodeWithTag("exercise-menu-Bench Press").performClick()
+        awaitMenuItem("Exercise settings")
+        compose.onNodeWithText("Edit exercise").assertDoesNotExist()
+        compose.onNodeWithText("Archive exercise").assertDoesNotExist()
+        compose.onNodeWithText("Delete exercise").assertDoesNotExist()
+        compose.onNodeWithText("Exercise settings").performClick()
+
+        awaitTag("exercise-settings")
+        compose.onNodeWithTag("segmented-lb").performClick()
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("exercise-settings")).fetchSemanticsNodes().isEmpty()
+        }
+
+        val bench = runBlocking {
+            ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+                .exercise(seededId("exercise", "Bench Press"))!!
+        }
+        assertEquals("LB", bench.weightUnitOverride)
+        assertEquals("Bench Press", bench.name)
+        assertEquals("Chest", bench.muscleGroup)
+        assertEquals("Barbell", bench.equipment)
+    }
+
+    @Test
+    fun customExerciseMenuKeepsItsActionsAndAddsSettings() {
+        openWorkouts()
+        compose.onNodeWithTag("workouts-menu").performClick()
+        clickMenuTag("open-library")
+        compose.onNodeWithTag("new-exercise").performClick()
+        type("exercise-name", "Belt Squat")
+        compose.onNodeWithTag("muscle-Quads").performClick()
+        compose.onNodeWithTag("equipment-Machine").performClick()
+        compose.onNodeWithTag("save-exercise").performScrollTo().performClick()
+        awaitTag("screen-Library")
+
+        compose.onNodeWithTag("exercise-menu-Belt Squat").performClick()
+        awaitMenuItem("Exercise settings")
+        compose.onNodeWithText("Exercise settings").assertExists()
+        compose.onNodeWithText("Edit exercise").assertExists()
+        compose.onNodeWithText("Archive exercise").assertExists()
+        compose.onNodeWithText("Delete exercise").assertExists()
     }
 
     @Test

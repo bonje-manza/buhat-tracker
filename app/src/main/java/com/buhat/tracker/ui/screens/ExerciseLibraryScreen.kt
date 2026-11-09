@@ -37,11 +37,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.SeedContent
+import com.buhat.tracker.data.Settings
 import com.buhat.tracker.data.local.Exercise
+import com.buhat.tracker.domain.ContentValidationException
+import com.buhat.tracker.domain.REST_SECONDS_MAX
+import com.buhat.tracker.domain.formatRestSeconds
 import com.buhat.tracker.ui.components.BuhatChoiceChip
 import com.buhat.tracker.ui.components.BuhatEmptyState
 import com.buhat.tracker.ui.components.BuhatPill
 import com.buhat.tracker.ui.components.BuhatScreen
+import com.buhat.tracker.ui.components.BuhatSegmentedControl
+import com.buhat.tracker.ui.components.BuhatStepper
 import kotlinx.coroutines.launch
 
 @Composable
@@ -53,10 +59,13 @@ fun ExerciseLibraryScreen(
 ) {
     val exercises by remember(repository) { repository.exercises() }
         .collectAsState(emptyList())
+    val settings by remember(repository) { repository.settingsStore.settings }
+        .collectAsState(Settings())
     var query by rememberSaveable { mutableStateOf("") }
     var group by rememberSaveable { mutableStateOf("All") }
     var openMenuId by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<Exercise?>(null) }
+    var settingsExercise by remember { mutableStateOf<Exercise?>(null) }
     var referenced by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -135,19 +144,26 @@ fun ExerciseLibraryScreen(
                             }
                         }
                     }
-                    if (exercise.isCustom) {
-                        Box {
-                            TextButton(
-                                onClick = { openMenuId = exercise.id },
-                                modifier = Modifier.testTag("exercise-menu-${exercise.name}")
-                                    .semantics { contentDescription = "Exercise options" },
-                            ) {
-                                Text("⋯")
-                            }
-                            DropdownMenu(
-                                expanded = openMenuId == exercise.id,
-                                onDismissRequest = { openMenuId = null },
-                            ) {
+                    Box {
+                        TextButton(
+                            onClick = { openMenuId = exercise.id },
+                            modifier = Modifier.testTag("exercise-menu-${exercise.name}")
+                                .semantics { contentDescription = "Exercise options" },
+                        ) {
+                            Text("⋯")
+                        }
+                        DropdownMenu(
+                            expanded = openMenuId == exercise.id,
+                            onDismissRequest = { openMenuId = null },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Exercise settings") },
+                                onClick = {
+                                    openMenuId = null
+                                    settingsExercise = exercise
+                                },
+                            )
+                            if (exercise.isCustom) {
                                 DropdownMenuItem(
                                     text = { Text("Edit exercise") },
                                     onClick = {
@@ -215,6 +231,99 @@ fun ExerciseLibraryScreen(
             },
         )
     }
+
+    settingsExercise?.let { exercise ->
+        ExerciseSettingsDialog(repository, exercise, settings) { settingsExercise = null }
+    }
+}
+
+@Composable
+internal fun ExerciseSettingsDialog(
+    repository: BuhatRepository,
+    exercise: Exercise,
+    settings: Settings,
+    onDismiss: () -> Unit,
+) {
+    var unitOverride by remember(exercise.id) { mutableStateOf(exercise.weightUnitOverride) }
+    var restOverride by remember(exercise.id) { mutableStateOf(exercise.restWorkingSecondsOverride) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val unitIndex = when (unitOverride) {
+        "KG" -> 1
+        "LB" -> 2
+        else -> 0
+    }
+    val restSeconds = restOverride ?: settings.restWorkingSeconds
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("exercise-settings"),
+        title = { Text("Exercise settings") },
+        text = {
+            Column {
+                Text("Weight unit", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                BuhatSegmentedControl(
+                    options = listOf("Default", "kg", "lb"),
+                    selectedIndex = unitIndex,
+                    onSelect = { index ->
+                        unitOverride = when (index) {
+                            1 -> "KG"
+                            2 -> "LB"
+                            else -> null
+                        }
+                    },
+                )
+                Text(
+                    text = "Default follows the global unit (${settings.unit.name.lowercase()}).",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("Working rest", style = MaterialTheme.typography.titleMedium)
+                BuhatStepper(
+                    value = restSeconds.toDouble(),
+                    onValueChange = { restOverride = it.toInt() },
+                    step = settings.restIncrementSeconds.toDouble(),
+                    min = 0.0,
+                    max = REST_SECONDS_MAX.toDouble(),
+                    format = { formatRestSeconds(it.toInt()) },
+                    tagPrefix = "pref-rest-value",
+                )
+                if (restOverride != null) {
+                    TextButton(
+                        onClick = { restOverride = null },
+                        modifier = Modifier.testTag("pref-rest-default"),
+                    ) {
+                        Text("Use default (${formatRestSeconds(settings.restWorkingSeconds)})")
+                    }
+                }
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        try {
+                            repository.saveExercisePreferences(exercise.id, unitOverride, restOverride)
+                            onDismiss()
+                        } catch (e: ContentValidationException) {
+                            error = e.message
+                        }
+                    }
+                },
+                modifier = Modifier.testTag("save-exercise-prefs"),
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 

@@ -158,7 +158,7 @@ class SettingsScreenTest {
     fun unitsCardUsesTheDesignExampleCopy() {
         compose.onNodeWithTag("settings-button").performClick()
         awaitTag("settings-units")
-        compose.onNodeWithText("Weight steps are 2.5 kg. Example: 135 lb shows as 61.2 kg.")
+        compose.onNodeWithText("Weight steps are 2.5 kg or 5 lb. Set a per-exercise unit and working rest in Exercise settings.")
             .performScrollTo()
             .assertIsDisplayed()
     }

@@ -144,6 +144,9 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     val restEndsAt = settingsResult?.restEndsAt
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val exerciseRow by remember(selected?.exerciseId) {
+        selected?.let { repository.observeExercise(it.exerciseId) } ?: flowOf(null)
+    }.collectAsState(null)
 
     val sets by remember(selected?.id) {
         selected?.let { repository.loggedSets(it.id) } ?: flowOf(emptyList())
@@ -277,6 +280,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     var typeIndex by rememberSaveable(selected?.id, position) { mutableStateOf(1) }
     var error by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    var settingsOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<LoggedSet?>(null) }
     var discardPrompt by remember { mutableStateOf<DiscardPrompt?>(null) }
     fun displayToKg(text: String): Double? =
@@ -477,11 +481,26 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            TextButton(onClick = {
-                setWeight(nextTargetValue.weightKg)
-                repsText = nextTargetValue.reps.toString()
-            }, modifier = Modifier.testTag("use-target")) {
-                Text("Use target")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = {
+                    setWeight(nextTargetValue.weightKg)
+                    repsText = nextTargetValue.reps.toString()
+                }, modifier = Modifier.testTag("use-target")) {
+                    Text("Use target")
+                }
+                if (exerciseRow != null) {
+                    TextButton(
+                        onClick = { settingsOpen = true },
+                        modifier = Modifier.testTag("target-exercise-settings"),
+                    ) {
+                        Text("Settings")
+                    }
+                }
+            }
+        }
+        if (settingsOpen) {
+            exerciseRow?.let { row ->
+                ExerciseSettingsDialog(repository, row, settings) { settingsOpen = false }
             }
         }
         Spacer(Modifier.height(16.dp))

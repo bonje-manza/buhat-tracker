@@ -158,7 +158,7 @@ fun SettingsScreen(
                 BuhatCard(Modifier.testTag("settings-units")) {
                     SectionTitle("Units")
                     Text(
-                        text = "Weight steps are 2.5 kg. Example: 135 lb shows as 61.2 kg.",
+                        text = "Weight steps are 2.5 kg or 5 lb. Set a per-exercise unit and working rest in Exercise settings.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
