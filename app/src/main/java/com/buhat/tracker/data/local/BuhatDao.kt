@@ -41,6 +41,12 @@ interface BuhatDao {
     @Query("SELECT * FROM Exercise WHERE id = :id")
     suspend fun exerciseById(id: String): Exercise?
 
+    @Query("SELECT * FROM Exercise WHERE id = :id")
+    fun observeExercise(id: String): Flow<Exercise?>
+
+    @Query("SELECT * FROM Exercise ORDER BY createdAt, id")
+    fun observeAllExercises(): Flow<List<Exercise>>
+
     @Query("SELECT * FROM Template WHERE id = :id")
     suspend fun templateById(id: String): Template?
 
@@ -158,6 +164,9 @@ interface BuhatDao {
 
     @Query("SELECT * FROM SessionExercise WHERE sessionId = :sessionId ORDER BY position")
     fun observeSessionExercises(sessionId: String): Flow<List<SessionExercise>>
+
+    @Query("SELECT * FROM SessionExercise WHERE id = :id")
+    suspend fun sessionExerciseById(id: String): SessionExercise?
 
     @Query(
         """

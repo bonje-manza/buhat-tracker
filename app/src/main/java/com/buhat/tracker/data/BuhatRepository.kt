@@ -22,6 +22,7 @@ import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.countsForProgression
+import com.buhat.tracker.domain.effectiveWorkingRest
 import com.buhat.tracker.domain.homeWindowStart
 import com.buhat.tracker.domain.priorWindowStart
 import com.buhat.tracker.domain.renumberWorkingSets
@@ -64,6 +65,7 @@ data class HomeDashboard(
     val latest: HistorySession?,
     val window: List<HistorySession>,
     val bestBefore: Map<String, Double>,
+    val exercises: List<Exercise>,
 )
 
 data class ExerciseChoice(
@@ -90,6 +92,10 @@ class BuhatRepository(
     private val sessionWriteMutex = Mutex()
 
     fun exercises() = database.dao().observeExercises()
+
+    fun observeExercise(id: String): Flow<Exercise?> = database.dao().observeExercise(id)
+
+    fun allExercises(): Flow<List<Exercise>> = database.dao().observeAllExercises()
 
     fun templates() = database.dao().observeTemplates()
 
@@ -311,12 +317,14 @@ class BuhatRepository(
         database.dao().observeLatestFinishedWorkout(),
         database.dao().observeHistoryRowsSince(homeWindowStart(nowMillis)),
         database.dao().observeBestE1rmBefore(priorWindowStart(nowMillis)),
-    ) { stats, latest, rows, best ->
+        database.dao().observeAllExercises(),
+    ) { stats, latest, rows, best, exercises ->
         HomeDashboard(
             profileStats = stats,
             latest = latest?.toHistorySession(),
             window = rows.toHistorySessions(),
             bestBefore = best.associate { it.exerciseId to it.bestE1rm },
+            exercises = exercises,
         )
     }.flowOn(Dispatchers.Default)
 
@@ -413,13 +421,16 @@ class BuhatRepository(
         )
         if (rowIds.any { it == -1L }) throw SessionValidationException("Could not save the set. Try again.")
         val current = settingsStore.settings.first()
+        val exercise = dao.sessionExerciseById(sessionExerciseId)?.let { dao.exerciseById(it.exerciseId) }
+        val workingSeconds = exercise?.effectiveWorkingRest(current.restWorkingSeconds)
+            ?: current.restWorkingSeconds
         settingsStore.setRestEndsAt(
             restEndsAt(
                 now,
                 restSecondsFor(
                     setType,
                     current.restWarmupSeconds,
-                    current.restWorkingSeconds,
+                    workingSeconds,
                     current.restFailureSeconds,
                 ),
             ),

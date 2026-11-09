@@ -166,6 +166,46 @@ class RestTimerRepositoryTest {
     }
 
     @Test
+    fun workingRestOverrideAppliesOnlyToWorkingSets() = runTest {
+        val sessionId = repo.startSession(seededId("template", "Push Day A"))
+        val exercise = repo.sessionExercises(sessionId).first().first()
+        repo.saveExercisePreferences(exercise.exerciseId, null, 180)
+
+        val before = System.currentTimeMillis()
+        repo.logSet(exercise.id, SetType.WARMUP, weightKg = 40.0, reps = 10, rir = 4)
+        val afterWarmup = System.currentTimeMillis()
+        assertTrue(restEndsAt()!! in (before + 45_000)..(afterWarmup + 45_000))
+
+        repo.logSet(exercise.id, SetType.WORKING, weightKg = 80.0, reps = 8, rir = 2)
+        val afterWorking = System.currentTimeMillis()
+        assertTrue(restEndsAt()!! in (before + 180_000)..(afterWorking + 180_000))
+
+        repo.logSet(exercise.id, SetType.FAILURE, weightKg = 80.0, reps = 6, rir = 0)
+        val afterFailure = System.currentTimeMillis()
+        assertTrue(restEndsAt()!! in (before + 150_000)..(afterFailure + 150_000))
+    }
+
+    @Test
+    fun zeroWorkingOverrideStartsNoRest() = runTest {
+        val sessionId = repo.startSession(seededId("template", "Push Day A"))
+        val exercise = repo.sessionExercises(sessionId).first().first()
+        repo.saveExercisePreferences(exercise.exerciseId, null, 0)
+
+        repo.logSet(exercise.id, SetType.WORKING, weightKg = 80.0, reps = 8, rir = 2)
+
+        assertNull(restEndsAt())
+    }
+
+    @Test
+    fun allExercisesAndObserveExerciseKeepArchivedRows() = runTest {
+        val id = repo.saveExercise(null, "Belt Squat", "Quads", "Machine")
+        repo.archiveExercise(id)
+
+        assertTrue(repo.allExercises().first().any { it.id == id })
+        assertEquals(id, repo.observeExercise(id).first()?.id)
+    }
+
+    @Test
     fun aFinishedWorkoutCannotStartAnotherRest() = runTest {
         val sessionId = repo.startSession(seededId("template", "Push Day A"))
         val exercise = repo.sessionExercises(sessionId).first().first()
