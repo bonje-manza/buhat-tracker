@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.buhat.tracker.data.local.BuhatDatabase
 import com.buhat.tracker.data.local.WorkoutStatus
 import com.buhat.tracker.domain.PreviousSetSource
@@ -15,7 +16,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -24,6 +27,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
@@ -81,6 +85,119 @@ class SessionRepositoryTest {
         assertEquals(listOf(3, 3, 3), exercises.map { it.workingSets })
         assertEquals(listOf(6, 8, 10), exercises.map { it.repMin })
         assertEquals(listOf(8, 10, 12), exercises.map { it.repMax })
+    }
+
+    @Test
+    fun reorderedSessionKeepsSetsRestAndTemplateAcrossReloadAndFinish() = runTest {
+        val fixture = InstrumentationRegistry.getInstrumentation().context.assets
+            .open("phase5-bench-session.json").bufferedReader().use { JSONObject(it.readText()) }
+        val templateId = fixture.getString("templateIdSnapshot")
+        val templateBefore = db.dao().templateExercisesFor(templateId)
+        val sessionId = repo.startSession(templateId)
+        val original = repo.sessionExercises(sessionId).first()
+        val capturedSets = fixture.getJSONArray("exercises").getJSONObject(0).getJSONArray("sets")
+        for (index in 0 until capturedSets.length()) {
+            val set = capturedSets.getJSONObject(index)
+            repo.logSet(original[0].id, SetType.valueOf(set.getString("setType")),
+                set.getDouble("weightKg"), set.getInt("reps"), set.getInt("rir"))
+        }
+        val setsBefore = db.dao().allSets()
+        val restBefore = repo.settingsStore.settings.first().restEndsAt
+        assertNotNull(restBefore)
+
+        repo.reorderSessionExercises(sessionId, listOf(original[2].id, original[0].id, original[1].id))
+
+        val reopened = BuhatRepository(db, repo.settingsStore, repo.profileStore)
+        val restored = reopened.sessionExercises(sessionId).first()
+        assertEquals(listOf("Cable Fly", "Bench Press", "Incline Dumbbell Press"),
+            restored.map { it.exerciseNameSnapshot })
+        assertEquals(listOf(1, 2, 3), restored.map { it.position })
+        assertEquals(listOf(original[2].copy(position = 1), original[0].copy(position = 2),
+            original[1].copy(position = 3)), restored)
+        assertEquals(setsBefore, db.dao().allSets())
+        assertEquals(restBefore, reopened.settingsStore.settings.first().restEndsAt)
+        assertEquals(templateBefore, db.dao().templateExercisesFor(templateId))
+
+        reopened.finishSession(sessionId)
+
+        val finished = reopened.history().first().single()
+        assertEquals(listOf("Cable Fly", "Bench Press", "Incline Dumbbell Press"),
+            finished.exercises.map { it.exerciseNameSnapshot })
+        assertEquals(listOf(100.0, 80.0, 80.0, 80.0), finished.exercises[1].sets.map { it.weightKg })
+        assertEquals(listOf(20, 10, 9, 8), finished.exercises[1].sets.map { it.reps })
+        assertTrue(finished.exercises[0].sets.isEmpty())
+        assertTrue(finished.exercises[2].sets.isEmpty())
+        assertEquals(templateBefore, db.dao().templateExercisesFor(templateId))
+    }
+
+    @Test
+    fun reorderRejectsMissingDuplicateForeignAndExtraIdsWithoutWriting() = runTest {
+        val previous = repo.startSession(premadeTemplateId("Push Day A"))
+        val foreign = firstExerciseOf(previous)
+        repo.logSet(foreign.id, SetType.WORKING, 80.0, 8, 2)
+        repo.finishSession(previous)
+        val sessionId = repo.startSession(premadeTemplateId("Push Day A"))
+        val ids = repo.sessionExercises(sessionId).first().map { it.id }
+        val before = db.dao().allSessionExercises()
+        val invalidLists = listOf(
+            emptyList(), ids.dropLast(1), listOf(ids[0], ids[0], ids[2]),
+            listOf(ids[0], ids[1], foreign.id), ids + foreign.id, ids + ids[0],
+        )
+        for (invalid in invalidLists) {
+            val error = runCatching { repo.reorderSessionExercises(sessionId, invalid) }.exceptionOrNull()
+            assertTrue("Invalid order must be rejected: $invalid", error is SessionValidationException)
+            assertEquals(before, db.dao().allSessionExercises())
+        }
+    }
+
+    @Test
+    fun reorderRejectsFinishedAndMissingSessionsWithoutWriting() = runTest {
+        val sessionId = repo.startSession(premadeTemplateId("Push Day A"))
+        repo.logSet(firstExerciseOf(sessionId).id, SetType.WORKING, 80.0, 8, 2)
+        repo.finishSession(sessionId)
+        val before = db.dao().allSessionExercises()
+        val ids = before.map { it.id }.reversed()
+        for (id in listOf(sessionId, "missing-session")) {
+            val error = runCatching { repo.reorderSessionExercises(id, ids) }.exceptionOrNull()
+            assertTrue("Inactive workout must be rejected", error is SessionValidationException)
+            assertEquals(before, db.dao().allSessionExercises())
+        }
+    }
+
+    @Test
+    fun reorderRollsBackEveryPositionWhenAWriteFails() = runTest {
+        val sessionId = repo.startSession(premadeTemplateId("Push Day A"))
+        val before = repo.sessionExercises(sessionId).first()
+        db.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER fail_reorder BEFORE UPDATE OF position ON SessionExercise " +
+                "WHEN NEW.position = 2 BEGIN SELECT RAISE(ABORT, 'disk write failed'); END",
+        )
+
+        val error = runCatching {
+            repo.reorderSessionExercises(sessionId, before.map { it.id }.reversed())
+        }.exceptionOrNull()
+
+        assertTrue(error is android.database.sqlite.SQLiteException)
+        assertEquals(before, repo.sessionExercises(sessionId).first())
+    }
+
+    @Test
+    fun finishWaitsForAnInFlightReorder() = runTest {
+        val sessionId = repo.startSession(premadeTemplateId("Push Day A"))
+        val original = repo.sessionExercises(sessionId).first()
+        repo.logSet(original[0].id, SetType.WORKING, 80.0, 8, 2)
+        val reordering = launch {
+            repo.reorderSessionExercises(sessionId, listOf(original[2].id, original[0].id, original[1].id))
+        }
+        yield()
+
+        repo.finishSession(sessionId)
+        reordering.join()
+
+        assertEquals(WorkoutStatus.FINISHED, repo.session(sessionId)!!.status)
+        assertEquals(listOf("Cable Fly", "Bench Press", "Incline Dumbbell Press"),
+            repo.history().first().single().exercises.map { it.exerciseNameSnapshot })
+        assertNull(repo.settingsStore.settings.first().restEndsAt)
     }
 
     @Test

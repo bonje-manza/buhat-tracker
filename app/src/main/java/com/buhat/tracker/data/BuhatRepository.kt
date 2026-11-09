@@ -300,6 +300,22 @@ class BuhatRepository(
     fun sessionExercises(sessionId: String): Flow<List<SessionExercise>> =
         database.dao().observeSessionExercises(sessionId)
 
+    suspend fun reorderSessionExercises(sessionId: String, orderedIds: List<String>) = sessionWriteMutex.withLock {
+        database.withTransaction {
+            val dao = database.dao()
+            if (dao.sessionById(sessionId)?.status != WorkoutStatus.ACTIVE) {
+                throw SessionValidationException("Workout is not active.")
+            }
+            val exercises = dao.sessionExercisesFor(sessionId)
+            if (orderedIds.size != exercises.size || orderedIds.toSet() != exercises.map { it.id }.toSet()) {
+                throw SessionValidationException("Order must include each workout exercise exactly once.")
+            }
+            // Negative positions avoid collisions with the unique (sessionId, position) index.
+            dao.negateSessionExercisePositions(sessionId)
+            orderedIds.forEachIndexed { index, id -> dao.updateSessionExercisePosition(id, index + 1) }
+        }
+    }
+
     fun loggedSets(sessionExerciseId: String): Flow<List<LoggedSet>> =
         database.dao().observeSetsFor(sessionExerciseId)
 

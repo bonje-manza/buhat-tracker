@@ -165,6 +165,15 @@ interface BuhatDao {
     @Query("SELECT * FROM SessionExercise WHERE sessionId = :sessionId ORDER BY position")
     fun observeSessionExercises(sessionId: String): Flow<List<SessionExercise>>
 
+    @Query("SELECT * FROM SessionExercise WHERE sessionId = :sessionId ORDER BY position")
+    suspend fun sessionExercisesFor(sessionId: String): List<SessionExercise>
+
+    @Query("UPDATE SessionExercise SET position = -position WHERE sessionId = :sessionId")
+    suspend fun negateSessionExercisePositions(sessionId: String)
+
+    @Query("UPDATE SessionExercise SET position = :position WHERE id = :id")
+    suspend fun updateSessionExercisePosition(id: String, position: Int)
+
     @Query("SELECT * FROM SessionExercise WHERE id = :id")
     suspend fun sessionExerciseById(id: String): SessionExercise?
 

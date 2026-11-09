@@ -5,7 +5,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -14,7 +16,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.dp
+import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -28,6 +32,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -35,6 +40,8 @@ import org.junit.rules.TestRule
 import org.junit.runner.Description
 import org.junit.runner.RunWith
 import org.junit.runners.model.Statement
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class ActiveWorkoutTest {
@@ -365,6 +372,176 @@ class ActiveWorkoutTest {
         assertEquals(135, after.first.restWorkingSecondsOverride)
         assertEquals(80.0, after.second, 0.0001)
         assertEquals(restBefore, after.third)
+    }
+
+    @Test
+    fun reorderKeepsSelectionSetsAndRestThroughRecreationAndFinish() {
+        val container = ApplicationProvider.getApplicationContext<BuhatApplication>().container
+        runBlocking { container.settingsStore.update { it.copy(restWorkingSeconds = 600) } }
+        startPushDayA()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+        val restBefore = runBlocking { container.settingsStore.settings.first().restEndsAt }
+        assertNotNull(restBefore)
+
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithTag("edit-order").performClick()
+        compose.onNodeWithTag("order-up-Bench Press").assertIsNotEnabled()
+        compose.onNodeWithTag("order-down-Cable Fly").assertIsNotEnabled()
+        compose.onNodeWithTag("order-up-Cable Fly").assertHeightIsAtLeast(48.dp)
+            .assertContentDescriptionEquals("Move Cable Fly up").performClick()
+        awaitOrder(listOf("Bench Press", "Cable Fly", "Incline Dumbbell Press"))
+        compose.onNodeWithTag("order-up-Cable Fly").performClick()
+        awaitOrder(listOf("Cable Fly", "Bench Press", "Incline Dumbbell Press"))
+        compose.onNodeWithTag("order-up-Cable Fly").assertIsNotEnabled()
+        val rowTops = listOf("Cable Fly", "Bench Press", "Incline Dumbbell Press").map {
+            compose.onNodeWithTag("order-up-$it").getUnclippedBoundsInRoot().top
+        }
+        assertTrue(rowTops[0] < rowTops[1] && rowTops[1] < rowTops[2])
+        compose.onNodeWithTag("close-order").performClick()
+
+        assertReorderedChips()
+        compose.onNodeWithTag("exercise-chip-Bench Press").assertIsSelected()
+        compose.onNodeWithText("80 kg × 8").assertExists()
+        assertEquals(restBefore, runBlocking { container.settingsStore.settings.first().restEndsAt })
+
+        compose.activityRule.scenario.recreate()
+        awaitTag("exercise-chip-Bench Press")
+        assertReorderedChips()
+        compose.onNodeWithTag("exercise-chip-Bench Press").assertIsSelected()
+        awaitText("80 kg × 8")
+        assertEquals(restBefore, runBlocking { container.settingsStore.settings.first().restEndsAt })
+
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("active-empty")
+        runBlocking {
+            val history = container.repository.history().first().single()
+            assertEquals(listOf("Cable Fly", "Bench Press", "Incline Dumbbell Press"),
+                history.exercises.map { it.exerciseNameSnapshot })
+            assertEquals(80.0, history.exercises[1].sets.single().weightKg, 0.0)
+            assertEquals(listOf("Bench Press", "Incline Dumbbell Press", "Cable Fly"),
+                container.repository.loadTemplateDraft(seededId("template", "Push Day A"))!!
+                    .exercises.map { it.exerciseName })
+        }
+        compose.onNodeWithTag("tab-Home").performClick()
+        val homeTags = listOf("Cable Fly", "Bench Press", "Incline Dumbbell Press")
+            .map { "home-exercise-${seededId("exercise", it)}" }
+        awaitTag(homeTags[0])
+        val lefts = homeTags.map { compose.onNodeWithTag(it).getUnclippedBoundsInRoot().left }
+        assertTrue(lefts[0] < lefts[1] && lefts[1] < lefts[2])
+    }
+
+    @Test
+    fun singleExerciseOrderHasDisabledArrows() {
+        val container = ApplicationProvider.getApplicationContext<BuhatApplication>().container
+        runBlocking {
+            val template = container.repository.saveTemplate(null, "Bench only",
+                listOf(TemplateExerciseDraft(seededId("exercise", "Bench Press"), workingSets = 3, repMin = 6, repMax = 8)))
+            container.repository.startSession(template)
+        }
+        compose.onNodeWithTag("tab-Active").performClick()
+        awaitTag("active-menu")
+        compose.onNodeWithTag("active-menu").performClick()
+        compose.onNodeWithTag("edit-order").performClick()
+
+        compose.onNodeWithTag("order-up-Bench Press").assertIsNotEnabled()
+        compose.onNodeWithTag("order-down-Bench Press").assertIsNotEnabled()
+        compose.onNodeWithTag("close-order").performClick()
+        compose.onNodeWithTag("exercise-chip-Bench Press").assertIsSelected()
+    }
+
+    @Test
+    fun failedReorderShowsErrorAndCanBeRetried() {
+        startPushDayA()
+        val database = ApplicationProvider.getApplicationContext<BuhatApplication>().container.database
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER fail_reorder BEFORE UPDATE OF position ON SessionExercise " +
+                "WHEN NEW.position = 2 BEGIN SELECT RAISE(ABORT, 'disk write failed'); END",
+        )
+        compose.onNodeWithTag("active-menu").performClick()
+        compose.onNodeWithTag("edit-order").performClick()
+        compose.onNodeWithTag("order-up-Cable Fly").performClick()
+        awaitTag("order-error")
+        compose.onNodeWithTag("order-error").assertIsDisplayed()
+        awaitOrder(listOf("Bench Press", "Incline Dumbbell Press", "Cable Fly"))
+
+        database.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_reorder")
+        compose.onNodeWithTag("order-up-Cable Fly").performClick()
+        awaitOrder(listOf("Bench Press", "Cable Fly", "Incline Dumbbell Press"))
+        compose.onNodeWithTag("order-error").assertDoesNotExist()
+        // Exercise the downward move as well as the upward path.
+        compose.onNodeWithTag("order-down-Cable Fly").performClick()
+        awaitOrder(listOf("Bench Press", "Incline Dumbbell Press", "Cable Fly"))
+    }
+
+    @Test
+    fun reorderDisablesArrowsWhileTheDatabaseWriteIsPending() {
+        startPushDayA()
+        compose.onNodeWithTag("active-menu").performClick()
+        compose.onNodeWithTag("edit-order").performClick()
+        val database = ApplicationProvider.getApplicationContext<BuhatApplication>().container.database
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val blocker = Thread {
+            runBlocking {
+                database.withTransaction {
+                    database.dao().deleteSetById("transaction-blocker")
+                    entered.countDown()
+                    release.await(10, TimeUnit.SECONDS)
+                }
+            }
+        }.apply { start() }
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            compose.onNodeWithTag("order-up-Cable Fly").performClick()
+            for (name in listOf("Bench Press", "Incline Dumbbell Press", "Cable Fly")) {
+                compose.onNodeWithTag("order-up-$name").assertIsNotEnabled()
+                compose.onNodeWithTag("order-down-$name").assertIsNotEnabled()
+            }
+        } finally {
+            release.countDown()
+            blocker.join(5_000)
+        }
+        awaitOrder(listOf("Bench Press", "Cable Fly", "Incline Dumbbell Press"))
+    }
+
+    @Test
+    fun twoMovesInTheSameFrameKeepTheFirstAndRejectTheSecond() {
+        startPushDayA()
+        compose.onNodeWithTag("active-menu").performClick()
+        compose.onNodeWithTag("edit-order").performClick()
+        awaitTag("order-up-Cable Fly")
+
+        // Both handlers come from one composition, before anything can disable them.
+        val up = compose.onNodeWithTag("order-up-Cable Fly").fetchSemanticsNode()
+        val down = compose.onNodeWithTag("order-down-Bench Press").fetchSemanticsNode()
+        compose.runOnIdle {
+            up.config[SemanticsActions.OnClick].action!!.invoke()
+            down.config[SemanticsActions.OnClick].action!!.invoke()
+        }
+
+        awaitOrder(listOf("Bench Press", "Cable Fly", "Incline Dumbbell Press"))
+    }
+
+    private fun awaitOrder(names: List<String>) {
+        compose.waitUntil(5_000) {
+            runBlocking {
+                val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+                val session = repo.activeSession().first()!!
+                repo.sessionExercises(session.id).first().map { it.exerciseNameSnapshot } == names
+            }
+        }
+        compose.waitForIdle()
+    }
+
+    private fun assertReorderedChips() {
+        val lefts = listOf("Cable Fly", "Bench Press", "Incline Dumbbell Press").map {
+            compose.onNodeWithTag("exercise-chip-$it").getUnclippedBoundsInRoot().left
+        }
+        assertTrue(lefts[0] < lefts[1] && lefts[1] < lefts[2])
     }
 
     @Test

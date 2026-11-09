@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +66,7 @@ import com.buhat.tracker.data.NoWorkingSetsException
 import com.buhat.tracker.data.SessionValidationException
 import com.buhat.tracker.data.Settings
 import com.buhat.tracker.data.local.LoggedSet
+import com.buhat.tracker.data.local.SessionExercise
 import com.buhat.tracker.data.local.WorkoutSession
 import com.buhat.tracker.data.toRecord
 import com.buhat.tracker.domain.SetType
@@ -94,6 +96,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -284,6 +287,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     var error by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var orderOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<LoggedSet?>(null) }
     var discardPrompt by remember { mutableStateOf<DiscardPrompt?>(null) }
     fun displayToKg(text: String): Double? =
@@ -394,6 +398,16 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                         discardPrompt = DiscardPrompt("Discard workout?", "The logged sets will be deleted.")
                     },
                 )
+                DropdownMenuItem(
+                    text = { Text("Edit exercise order") },
+                    enabled = exercises.isNotEmpty(),
+                    modifier = Modifier.testTag("edit-order"),
+                    onClick = {
+                        menuOpen = false
+                        selectedId = selected?.id
+                        orderOpen = true
+                    },
+                )
             }
         }
     }
@@ -416,6 +430,10 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
         }
     }
     Spacer(Modifier.height(16.dp))
+
+    if (orderOpen) {
+        ExerciseOrderDialog(repository, session.id, exercises) { orderOpen = false }
+    }
 
     if (restRemaining > 0) {
         BuhatCard(Modifier.testTag("rest-card")) {
@@ -695,6 +713,81 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
 }
 
 private data class DiscardPrompt(val title: String, val body: String)
+
+@Composable
+private fun ExerciseOrderDialog(
+    repository: BuhatRepository,
+    sessionId: String,
+    exercises: List<SessionExercise>,
+    onDismiss: () -> Unit,
+) {
+    var pendingOrder by remember { mutableStateOf<List<String>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val saving = pendingOrder != null
+
+    // Keep arrows disabled until the displayed Flow has caught up with the saved order.
+    LaunchedEffect(exercises) {
+        if (exercises.map { it.id } == pendingOrder) pendingOrder = null
+    }
+
+    fun move(index: Int, destination: Int) {
+        // Read the state directly: a captured `saving` stays false for clicks in the same frame.
+        if (pendingOrder != null || destination !in exercises.indices) return
+        val ids = exercises.map { it.id }.toMutableList()
+        ids.add(destination, ids.removeAt(index))
+        pendingOrder = ids
+        error = null
+        scope.launch {
+            try {
+                withContext(NonCancellable) { repository.reorderSessionExercises(sessionId, ids) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                pendingOrder = null
+                error = "Could not save exercise order. Try again."
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Edit exercise order") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                exercises.forEachIndexed { index, exercise ->
+                    key(exercise.id) {
+                        val name = exercise.exerciseNameSnapshot
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(name, modifier = Modifier.weight(1f))
+                            TextButton(
+                                onClick = { move(index, index - 1) },
+                                enabled = !saving && index > 0,
+                                modifier = Modifier.heightIn(min = 48.dp).testTag("order-up-$name")
+                                    .semantics { contentDescription = "Move $name up" },
+                            ) { Text("↑") }
+                            TextButton(
+                                onClick = { move(index, index + 1) },
+                                enabled = !saving && index < exercises.lastIndex,
+                                modifier = Modifier.heightIn(min = 48.dp).testTag("order-down-$name")
+                                    .semantics { contentDescription = "Move $name down" },
+                            ) { Text("↓") }
+                        }
+                    }
+                }
+                if (saving) Text("Saving...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("order-error"))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, enabled = !saving, modifier = Modifier.testTag("close-order")) {
+                Text("Close")
+            }
+        },
+    )
+}
 
 @Composable
 private fun SetEditorDialog(
