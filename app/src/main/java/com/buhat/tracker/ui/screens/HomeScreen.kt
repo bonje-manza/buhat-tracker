@@ -56,6 +56,7 @@ import com.buhat.tracker.domain.DAY_MILLIS
 import com.buhat.tracker.domain.HOME_WINDOW_DAYS
 import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.e1rmTrend
+import com.buhat.tracker.domain.effectiveUnit
 import com.buhat.tracker.domain.formatHeight
 import com.buhat.tracker.domain.formatWeight
 import com.buhat.tracker.domain.fourWeekStats
@@ -160,6 +161,8 @@ fun HomeScreen(
         val exercise = recent.firstOrNull { it.exerciseId == selectedExercise }
             ?: recent.firstOrNull { it.sets.isNotEmpty() }
             ?: recent.firstOrNull()
+        val exerciseUnit = dashboard.exercises.firstOrNull { it.id == exercise?.exerciseId }
+            ?.effectiveUnit(loaded.unit) ?: loaded.unit
         // A session can finish after the collection clock snapshot, so the windows reach just past it.
         val now = homeAnalyticsNow(loaded.now, dashboard.window.maxOfOrNull { it.finishedAt })
         BuhatCard(Modifier.testTag("profile-card").clickable(onClick = onOpenProfile)) {
@@ -287,7 +290,7 @@ fun HomeScreen(
                 }
                 Spacer(Modifier.height(16.dp))
                 StrengthTrend(e1rmTrend(dashboard.window, exercise.exerciseId, HOME_WINDOW_DAYS, now),
-                    exercise.exerciseNameSnapshot, "3M", loaded.unit, "home")
+                    exercise.exerciseNameSnapshot, "3M", exerciseUnit, "home")
             }
         }
         Spacer(Modifier.height(16.dp))

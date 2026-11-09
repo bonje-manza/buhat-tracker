@@ -53,6 +53,7 @@ import com.buhat.tracker.domain.WindowStat
 import com.buhat.tracker.domain.countsForProgression
 import com.buhat.tracker.domain.e1rm
 import com.buhat.tracker.domain.e1rmTrend
+import com.buhat.tracker.domain.effectiveUnit
 import com.buhat.tracker.domain.exerciseStats
 import com.buhat.tracker.domain.formatWeight
 import com.buhat.tracker.domain.kgToLb
@@ -98,7 +99,7 @@ fun ProgressScreen(
     val data by produceState<ProgressData?>(null, repository, attempt) {
         choicesFailed = false
         try {
-            combine(repository.historyExerciseChoices(), repository.exercises(), repository.settingsStore.settings) {
+            combine(repository.historyExerciseChoices(), repository.allExercises(), repository.settingsStore.settings) {
                     choices, exercises, settings ->
                 ProgressData(choices, exercises, settings.unit)
             }.collect { value = it }
@@ -148,6 +149,7 @@ fun ProgressScreen(
     val historyRows = exerciseHistory?.takeIf { it.exerciseId == exerciseId }
     val history = historyRows?.sessions.orEmpty()
     val unit = loaded?.unit ?: WeightUnit.KG
+    val exerciseUnit = loaded?.exercises?.firstOrNull { it.id == exerciseId }?.effectiveUnit(unit) ?: unit
     val ranges = listOf("1M", "3M", "1Y", "All")
     val rangeDays = listOf(30, 90, 365, null)[rangeIndex]
     val now = System.currentTimeMillis()
@@ -184,7 +186,7 @@ fun ProgressScreen(
             item {
                 BuhatCard {
                     Text("Estimated 1RM", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    StrengthTrend(e1rmTrend(history, exerciseId, rangeDays, now), selected?.second.orEmpty(), ranges[rangeIndex], unit, "progress") {
+                    StrengthTrend(e1rmTrend(history, exerciseId, rangeDays, now), selected?.second.orEmpty(), ranges[rangeIndex], exerciseUnit, "progress") {
                         BuhatSegmentedControl(ranges, rangeIndex, onSelectRange,
                             selectedColor = MaterialTheme.colorScheme.secondary,
                             selectedContentColor = MaterialTheme.colorScheme.onSecondary)
@@ -193,8 +195,8 @@ fun ProgressScreen(
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile("Best e1RM", summary.bestE1rm?.let { analyticsWeight(it, unit) } ?: "—", "progress-best", Modifier.weight(1f))
-                    StatTile("Heaviest set", summary.heaviestSet?.let { "${formatWeight(it.weightKg, unit)} × ${it.reps}" } ?: "—", "progress-heaviest", Modifier.weight(1f))
+                    StatTile("Best e1RM", summary.bestE1rm?.let { analyticsWeight(it, exerciseUnit) } ?: "—", "progress-best", Modifier.weight(1f))
+                    StatTile("Heaviest set", summary.heaviestSet?.let { "${formatWeight(it.weightKg, exerciseUnit)} × ${it.reps}" } ?: "—", "progress-heaviest", Modifier.weight(1f))
                     StatTile("Sessions", summary.sessionCount.toString(), "progress-sessions", Modifier.weight(1f))
                 }
             }
@@ -208,7 +210,7 @@ fun ProgressScreen(
             items(workouts, key = { it.id }) { workout ->
                 val exercise = workout.exercises.first { it.exerciseId == exerciseId }
                 val expanded = expandedId == workout.id
-                WorkoutHistoryCard(workout, exercise, unit, prs, expanded,
+                WorkoutHistoryCard(workout, exercise, exerciseUnit, prs, expanded,
                     onToggle = { expandedId = if (expanded) null else workout.id },
                     onDelete = { pendingDeleteId = workout.id; deleteError = null })
             }

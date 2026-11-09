@@ -125,6 +125,24 @@ class ProgressScreenTest {
         compose.onNodeWithText("Est. 1RM", useUnmergedTree = true).assertExists()
     }
 
+    @Test fun benchProgressAndHomeTrendUseTheExerciseUnitWhileVolumeStaysGlobal() {
+        val sessionId = runBlocking {
+            container.repository.saveExercisePreferences(benchId, "LB", null)
+            container.recordBenchWorkout()
+        }
+        // 80 kg × 2.20462 = 176.3696 → 176.4 lb. e1RM 106.6667 kg → 235.2 lb. Volume stays global.
+        awaitValue("home-trend-latest", "235.2 lb")
+        homeValue("home-volume-value", "2160 kg")
+
+        openProgress()
+        compose.onNodeWithTag("progress-exercise-picker").assertTextContains("Bench Press")
+        progressItem("progress-best-value").assertTextEquals("235.2 lb")
+        progressItem("progress-heaviest-value").assertTextEquals("176.4 lb × 10")
+        progressItem("history-$sessionId").performClick()
+        val heaviestSet = runBlocking { container.repository.history().first().single().exercises.first().sets[1] }
+        progressItem("history-set-${heaviestSet.id}").assertTextContains("176.4 lb × 10", substring = true)
+    }
+
     @Test fun rangesUseAllTimePrsAndDeletingTheRecordRecalculatesBadges() {
         val old = recordSingleSet(100.0, 6, 400) // e1RM 120, outside 1Y.
         runBlocking { container.recordBenchWorkout(daysAgo = 40) } // e1RM 106.6667.
@@ -222,6 +240,7 @@ class ProgressScreenTest {
             val session = repo.startSession(template)
             repo.logSet(repo.sessionExercises(session).first().first().id, SetType.WORKING, 0.0, 10, 2)
             repo.finishSession(session)
+            repo.saveExercisePreferences(exercise, "LB", null)
             repo.archiveExercise(exercise)
             repo.deleteTemplate(template)
             exercise
@@ -233,7 +252,7 @@ class ProgressScreenTest {
         compose.onNodeWithTag("progress-pick-$exerciseId").performClick()
         awaitTag("progress-trend-empty")
         progressItem("progress-best-value").assertTextEquals("—")
-        progressItem("progress-heaviest-value").assertTextEquals("0 kg × 10")
+        progressItem("progress-heaviest-value").assertTextEquals("0 lb × 10")
         progressItem("progress-sessions-value").assertTextEquals("1")
         compose.onNodeWithTag("screen-Progress").performScrollToNode(hasText("Bodyweight day", substring = true))
         compose.onNodeWithText("Bodyweight day", substring = true).assertExists()
