@@ -811,11 +811,11 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Add DAO reads and position updates for a session's exercises. Add `reorderSessionExercises(sessionId, orderedIds)` to the repository inside `sessionWriteMutex` and one transaction.
-- [ ] Validate that the session is ACTIVE and that `orderedIds` is exactly the session's exercise IDs with no duplicates. Move positions to negatives, then write 1..N.
-- [ ] Add "Edit exercise order" to the Active overflow menu. Open a dialog listing the session's exercises with up/down buttons. Save on each move; disable the arrows at the ends and while a write is in flight; keep the selected exercise selected.
-- [ ] Add test tags such as `edit-order`, `order-up-<name>`, `order-down-<name>`, and `close-order`.
-- [ ] Tests: live reorder, finish order, process death, logged sets stay attached, template unchanged, one exercise, invalid ID list rejected.
+- [x] Add DAO reads and position updates for a session's exercises. Add `reorderSessionExercises(sessionId, orderedIds)` to the repository inside `sessionWriteMutex` and one transaction.
+- [x] Validate that the session is ACTIVE and that `orderedIds` is exactly the session's exercise IDs with no duplicates. Move positions to negatives, then write 1..N.
+- [x] Add "Edit exercise order" to the Active overflow menu. Open a dialog listing the session's exercises with up/down buttons. Save on each move; disable the arrows at the ends and while a write is in flight; keep the selected exercise selected.
+- [x] Add test tags such as `edit-order`, `order-up-<name>`, `order-down-<name>`, and `close-order`.
+- [x] Tests: live reorder, finish order, process death, logged sets stay attached, template unchanged, one exercise, invalid ID list rejected.
 
 **Acceptance checks**
 
@@ -825,6 +825,8 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 - Logged sets stay under their exercise, and a running rest is unaffected.
 - Reordering one exercise is a no-op with disabled arrows.
 - Unit and device suites pass.
+
+**Result:** 2026-11-09. Full E2E suite passes: 113 unit tests and 205 device tests, 0 failed. `reorderSessionExercises` validates ACTIVE and an exact ID set under `sessionWriteMutex`, then rewrites positions to negatives and 1..N in one transaction; failure rolls back every position and finish/discard serialize with it. The Active overflow menu opens an "Edit exercise order" dialog with 48dp up/down buttons that save each move, stay disabled at the ends and during writes, and keep the selected exercise, logged sets, running rest, and template unchanged. Verified through repository recreation, Activity recreation, and finished history/Home order. Automated restore coverage is Room and Activity recreation, not an actual process kill; the manual check remains in the test catalog.
 
 ### Phase 14 - Full validation and release
 
