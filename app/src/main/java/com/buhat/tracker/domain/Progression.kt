@@ -2,8 +2,6 @@ package com.buhat.tracker.domain
 
 import java.math.BigDecimal
 
-const val WEIGHT_INCREMENT_KG = 2.5
-
 data class SetAtPosition(val set: LoggedSetRecord, val position: Int)
 
 data class ProgressionTarget(

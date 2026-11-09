@@ -21,6 +21,7 @@ import com.buhat.tracker.MainActivity
 import com.buhat.tracker.data.seededId
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
+import com.buhat.tracker.domain.lbToKg
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -222,6 +223,86 @@ class ActiveWorkoutTest {
 
         awaitText("Push Day A")
         awaitText("82.5 kg × 7")
+    }
+
+    @Test
+    fun lbExerciseLogsAndTargetsInPounds() {
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            repo.saveExercisePreferences(seededId("exercise", "Bench Press"), "LB", null)
+            val session = repo.startSession(seededId("template", "Push Day A"))
+            val bench = repo.sessionExercises(session).first().first()
+            repo.logSet(bench.id, SetType.WORKING, weightKg = lbToKg(135.0), reps = 10, rir = 2)
+            repo.finishSession(session)
+        }
+        startPushDayA()
+
+        // 135 lb top of range: 135 + 5 lb, restart at 6.
+        awaitText("140 lb × 6")
+        compose.onNodeWithText("Top of range reached. Add 5 lb, restart at 6.").assertExists()
+        compose.onNodeWithTag("target-exercise-settings").assertExists()
+        compose.onNodeWithTag("weight-input").assertTextContains("135")
+        compose.onNodeWithTag("weight-input-plus").performClick()
+        compose.onNodeWithTag("weight-input").assertTextContains("140")
+
+        compose.onNodeWithTag("weight-input").performTextReplacement("135")
+        compose.onNodeWithTag("reps-input").performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitText("135 lb × 8")
+
+        val stored = runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.activeSession().first()!!
+            val exercise = repo.sessionExercises(session.id).first().first()
+            repo.loggedSets(exercise.id).first().last().weightKg
+        }
+        assertEquals(lbToKg(135.0), stored, 0.0001)
+    }
+
+    @Test
+    fun eachExerciseUsesItsOwnUnitInTheSameWorkout() {
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            repo.saveExercisePreferences(seededId("exercise", "Bench Press"), "LB", null)
+            repo.saveExercisePreferences(seededId("exercise", "Leg Extension"), "KG", null)
+            val template = repo.saveTemplate(
+                id = null,
+                name = "Mixed units day",
+                exercises = listOf(
+                    TemplateExerciseDraft(
+                        exerciseId = seededId("exercise", "Bench Press"),
+                        workingSets = 1,
+                        repMin = 6,
+                        repMax = 10,
+                        targetRir = 2,
+                    ),
+                    TemplateExerciseDraft(
+                        exerciseId = seededId("exercise", "Leg Extension"),
+                        workingSets = 1,
+                        repMin = 6,
+                        repMax = 10,
+                        targetRir = 2,
+                    ),
+                ),
+            )
+            repo.startSession(template)
+        }
+        compose.onNodeWithTag("tab-Active").performClick()
+        awaitTag("weight-input")
+
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("100")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitText("100 lb × 8")
+
+        compose.onNodeWithTag("exercise-chip-Leg Extension").performScrollTo().performClick()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("50")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitText("50 kg × 8")
+
+        compose.onNodeWithTag("exercise-chip-Bench Press").performScrollTo().performClick()
+        awaitText("100 lb × 8")
     }
 
     @Test

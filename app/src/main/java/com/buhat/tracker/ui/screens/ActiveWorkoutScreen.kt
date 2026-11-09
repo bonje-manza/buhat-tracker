@@ -69,7 +69,7 @@ import com.buhat.tracker.data.local.WorkoutSession
 import com.buhat.tracker.data.toRecord
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.WeightUnit
-import com.buhat.tracker.domain.WEIGHT_INCREMENT_KG
+import com.buhat.tracker.domain.effectiveUnit
 import com.buhat.tracker.domain.formatElapsed
 import com.buhat.tracker.domain.formatRest
 import com.buhat.tracker.domain.formatWeight
@@ -82,6 +82,7 @@ import com.buhat.tracker.domain.restRemainingMillis
 import com.buhat.tracker.domain.restDeadlineElapsed
 import com.buhat.tracker.domain.rirLabel
 import com.buhat.tracker.domain.sourceSetForPosition
+import com.buhat.tracker.domain.weightIncrementKg
 import com.buhat.tracker.timer.RestTimer
 import com.buhat.tracker.ui.components.BuhatCard
 import com.buhat.tracker.ui.components.BuhatChoiceChip
@@ -258,9 +259,9 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             templateIdSnapshot = session.templateIdSnapshot,
         )
     }
-    val target = selected?.let { nextTarget(source, it.repMin, it.repMax, settings.unit) }
+    val unit = exerciseRow?.effectiveUnit(settings.unit) ?: settings.unit
+    val target = selected?.let { nextTarget(source, it.repMin, it.repMax, unit) }
     val prefill = prefillFor(source, records.lastOrNull())
-    val unit = settings.unit
 
     // Prefill keys include the source values: history flows in after the first frame, and the
     // form must adopt them without wiping a user edit (prefill only changes on new data).
@@ -292,7 +293,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     }
 
     fun stepWeight(delta: Int) {
-        setWeight(((weightKg ?: 0.0) + delta * WEIGHT_INCREMENT_KG).coerceIn(0.0, 1000.0))
+        setWeight(((weightKg ?: 0.0) + delta * weightIncrementKg(unit)).coerceIn(0.0, 1000.0))
     }
 
     fun log() {
@@ -721,7 +722,7 @@ private fun SetEditorDialog(
                     weightText = weightText,
                     onWeightChange = { text -> weightText = text; weightKg = parseWeight(text) },
                     onWeightStep = { delta ->
-                        val next = ((weightKg ?: 0.0) + delta * WEIGHT_INCREMENT_KG).coerceIn(0.0, 1000.0)
+                        val next = ((weightKg ?: 0.0) + delta * weightIncrementKg(unit)).coerceIn(0.0, 1000.0)
                         weightKg = next
                         weightText = formatWeightValue(next, unit)
                     },
