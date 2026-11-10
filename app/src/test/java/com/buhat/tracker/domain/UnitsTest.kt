@@ -59,6 +59,19 @@ class UnitsTest {
     }
 
     @Test
+    fun formatKgCapsLongConvertedValuesAtTwoDecimals() {
+        assertEquals("102.06", formatKg(lbToKg(225.0)))
+        assertEquals("54.88", formatKg(54.884631999999996))
+    }
+
+    @Test
+    fun poundKilogramPoundRoundTripShowsWholePounds() {
+        val kg = lbToKg(225.0)
+        assertEquals("102.06 kg", formatWeight(kg, WeightUnit.KG))
+        assertEquals("225 lb", formatWeight(kg, WeightUnit.LB))
+    }
+
+    @Test
     fun effectiveUnitUsesOverrideThenGlobal() {
         assertEquals(WeightUnit.LB, exercise(unit = "LB").effectiveUnit(WeightUnit.KG))
         assertEquals(WeightUnit.KG, exercise(unit = null).effectiveUnit(WeightUnit.KG))

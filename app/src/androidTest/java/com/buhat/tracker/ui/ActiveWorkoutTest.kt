@@ -570,7 +570,7 @@ class ActiveWorkoutTest {
         compose.onNodeWithTag("resume-workout").performClick()
 
         awaitTag("screen-Active")
-        compose.onNodeWithText("Push Day A").assertExists()
+        awaitText("Push Day A")
     }
 
     @Test

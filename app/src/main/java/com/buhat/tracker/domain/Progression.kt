@@ -1,6 +1,7 @@
 package com.buhat.tracker.domain
 
 import java.math.BigDecimal
+import java.math.RoundingMode
 
 data class SetAtPosition(val set: LoggedSetRecord, val position: Int)
 
@@ -72,4 +73,4 @@ fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int, unit: WeightU
 }
 
 fun formatKg(value: Double): String =
-    BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
+    BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
