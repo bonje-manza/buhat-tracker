@@ -1,6 +1,12 @@
 package com.buhat.tracker.data
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,6 +25,39 @@ class BackupTest {
         assertTrue(
             "Expected message containing '$fragment', was '${error.message}'",
             error.message.orEmpty().contains(fragment),
+        )
+    }
+
+    private fun withoutKeys(json: String, vararg keys: String): String {
+        fun strip(element: JsonElement): JsonElement = when (element) {
+            is JsonObject -> JsonObject(
+                element.filterKeys { it !in keys }.mapValues { strip(it.value) },
+            )
+            is JsonArray -> JsonArray(element.map(::strip))
+            else -> element
+        }
+        return strip(Json.parseToJsonElement(json)).toString()
+    }
+
+    private val secondSessionId = "00000000-0000-4000-8000-000000000002"
+    private val secondSessionExerciseId = "00000000-0000-4000-8000-000000000003"
+
+    private fun twoSessionBackup(): Backup {
+        val original = validBackup()
+        return original.copy(
+            sessions = listOf(
+                original.sessions.single().copy(importKey = "duplicate"),
+                original.sessions.single().copy(id = secondSessionId, importKey = "duplicate"),
+            ),
+            sessionExercises = listOf(
+                original.sessionExercises.single(),
+                original.sessionExercises.single().copy(
+                    id = secondSessionExerciseId,
+                    sessionId = secondSessionId,
+                    exerciseId = otherId,
+                    position = 1,
+                ),
+            ),
         )
     }
 
@@ -69,17 +108,24 @@ class BackupTest {
 
     @Test
     fun `a newer format version is rejected`() {
-        val json = encodeBackup(validBackup()).replace("\"formatVersion\": 1", "\"formatVersion\": 3")
+        val json = encodeBackup(validBackup()).replace("\"formatVersion\": 1", "\"formatVersion\": 4")
 
         assertRejected(json, "newer version")
     }
 
     @Test
-    fun `a format 1 backup imports with null overrides`() {
+    fun `a format 1 backup imports with null overrides and format 3 defaults`() {
         val decoded = decodeBackup(captured)
 
         assertEquals(null, decoded.exercises.single().weightUnitOverride)
         assertEquals(null, decoded.exercises.single().restWorkingSecondsOverride)
+        assertEquals(null, decoded.exercises.single().note)
+        assertFalse(decoded.exercises.single().isUnilateral)
+        assertEquals(null, decoded.sessions.single().note)
+        assertEquals(null, decoded.sessions.single().importKey)
+        assertEquals(null, decoded.sessionExercises.single().note)
+        assertEquals(null, decoded.sessionExercises.single().replacesSessionExerciseId)
+        assertTrue(decoded.sets.all { it.side == null })
     }
 
     @Test
@@ -137,6 +183,160 @@ class BackupTest {
             assertRejected(encodeBackup(invalid.copy(formatVersion = 2)), "outside the allowed range")
         }
     }
+
+    @Test
+    fun `format 3 requires the new keys`() {
+        val json = encodeBackup(validBackup().copy(formatVersion = 3))
+
+        for (key in listOf("note", "isUnilateral", "importKey", "replacesSessionExerciseId", "side")) {
+            assertRejected(withoutKeys(json, key), "corrupt")
+        }
+    }
+
+    @Test
+    fun `a format 3 backup round trips every new field`() {
+        val original = validBackup()
+        val firstRow = original.sessionExercises.single()
+        val backup = original.copy(
+            formatVersion = 3,
+            exercises = listOf(
+                original.exercises.single().copy(note = "Keep elbows tucked", isUnilateral = true),
+            ),
+            sessions = listOf(
+                original.sessions.single().copy(note = "Felt strong", importKey = "strong:2026-06-24:FBEOD"),
+            ),
+            sessionExercises = listOf(
+                firstRow.copy(note = "Left felt weaker"),
+                firstRow.copy(
+                    id = secondSessionExerciseId,
+                    exerciseId = otherId,
+                    position = 2,
+                    note = "Replacement note",
+                    replacesSessionExerciseId = firstRow.id,
+                ),
+            ),
+            sets = original.sets.mapIndexed { index, set -> if (index == 0) set.copy(side = "RIGHT") else set },
+        )
+
+        val decoded = decodeBackup(encodeBackup(backup))
+
+        assertEquals(3, decoded.formatVersion)
+        assertEquals("Keep elbows tucked", decoded.exercises.single().note)
+        assertTrue(decoded.exercises.single().isUnilateral)
+        assertEquals("Felt strong", decoded.sessions.single().note)
+        assertEquals("strong:2026-06-24:FBEOD", decoded.sessions.single().importKey)
+        assertEquals("Left felt weaker", decoded.sessionExercises.first().note)
+        assertEquals(firstRow.id, decoded.sessionExercises[1].replacesSessionExerciseId)
+        assertEquals("RIGHT", decoded.sets.first().side)
+    }
+
+    @Test
+    fun `a format 2 backup defaults every format 3 field`() {
+        val original = validBackup()
+        val backup = original.copy(
+            formatVersion = 2,
+            exercises = listOf(original.exercises.single().copy(note = "ignored", isUnilateral = true)),
+            sessions = listOf(original.sessions.single().copy(note = "ignored", importKey = "ignored")),
+            sessionExercises = listOf(original.sessionExercises.single().copy(note = "ignored")),
+            sets = original.sets.map { it.copy(side = "LEFT") },
+        )
+
+        val decoded = decodeBackup(
+            withoutKeys(
+                encodeBackup(backup),
+                "note", "isUnilateral", "importKey", "replacesSessionExerciseId", "side",
+            ),
+        )
+
+        assertEquals(2, decoded.formatVersion)
+        assertNull(decoded.exercises.single().note)
+        assertFalse(decoded.exercises.single().isUnilateral)
+        assertNull(decoded.sessions.single().note)
+        assertNull(decoded.sessions.single().importKey)
+        assertNull(decoded.sessionExercises.single().note)
+        assertNull(decoded.sessionExercises.single().replacesSessionExerciseId)
+        assertTrue(decoded.sets.all { it.side == null })
+    }
+
+    @Test
+    fun `notes accept 2000 characters and reject more`() {
+        val original = validBackup()
+        val exercise = original.exercises.single()
+        val session = original.sessions.single()
+        val sessionExercise = original.sessionExercises.single()
+        val accepted = original.copy(
+            formatVersion = 3,
+            exercises = listOf(exercise.copy(note = "x".repeat(2000))),
+            sessions = listOf(session.copy(note = "x".repeat(2000))),
+            sessionExercises = listOf(sessionExercise.copy(note = "x".repeat(2000))),
+        )
+        decodeBackup(encodeBackup(accepted))
+
+        val long = "x".repeat(2001)
+        for (invalid in listOf(
+            original.copy(formatVersion = 3, exercises = listOf(exercise.copy(note = long))),
+            original.copy(formatVersion = 3, sessions = listOf(session.copy(note = long))),
+            original.copy(formatVersion = 3, sessionExercises = listOf(sessionExercise.copy(note = long))),
+        )) assertRejected(encodeBackup(invalid), "outside the allowed range")
+    }
+
+    @Test
+    fun `an invalid side is rejected`() {
+        val original = validBackup()
+        for (side in listOf("UP", "", "left")) {
+            assertRejected(
+                encodeBackup(original.copy(formatVersion = 3, sets = listOf(original.sets.first().copy(side = side)))),
+                "corrupt",
+            )
+        }
+    }
+
+    @Test
+    fun `duplicate import keys are rejected`() {
+        assertRejected(encodeBackup(twoSessionBackup().copy(formatVersion = 3)), "duplicate import key")
+    }
+
+    @Test
+    fun `import keys must be nonblank and at most 200 characters`() {
+        val original = validBackup().copy(formatVersion = 3)
+        fun withKey(key: String) = encodeBackup(
+            original.copy(sessions = listOf(original.sessions.single().copy(importKey = key))),
+        )
+
+        assertEquals("x".repeat(200), decodeBackup(withKey("x".repeat(200))).sessions.single().importKey)
+        for (key in listOf("", " \t\n", "x".repeat(201))) {
+            assertRejected(withKey(key), "outside the allowed range")
+        }
+    }
+
+    @Test
+    fun `a dangling replacement link is rejected`() {
+        val original = validBackup()
+        val row = original.sessionExercises.single()
+        for (invalid in listOf(
+            row.copy(replacesSessionExerciseId = row.id),
+            row.copy(replacesSessionExerciseId = otherId),
+        )) {
+            val backup = original.copy(formatVersion = 3, sessionExercises = listOf(invalid))
+            assertRejected(encodeBackup(backup), "dangling replacement link")
+        }
+
+        val twoSessions = twoSessionBackup().copy(
+            formatVersion = 3,
+            sessions = twoSessionBackup().sessions.map { it.copy(importKey = null) },
+        )
+        assertRejected(
+            encodeBackup(
+                twoSessions.copy(
+                    sessionExercises = twoSessions.sessionExercises.mapIndexed { index, exercise ->
+                        if (index == 0) exercise.copy(replacesSessionExerciseId = secondSessionExerciseId) else exercise
+                    },
+                ),
+            ),
+            "dangling replacement link",
+        )
+    }
+
 
     @Test
     fun `a truncated file is corrupt`() {

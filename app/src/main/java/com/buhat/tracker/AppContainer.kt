@@ -73,7 +73,7 @@ class AppContainer(
         Room.inMemoryDatabaseBuilder(context, BuhatDatabase::class.java).build()
     } else {
         Room.databaseBuilder(context, BuhatDatabase::class.java, databaseName)
-            .addMigrations(BuhatDatabase.MIGRATION_1_2, BuhatDatabase.MIGRATION_2_3)
+            .addMigrations(BuhatDatabase.MIGRATION_1_2, BuhatDatabase.MIGRATION_2_3, BuhatDatabase.MIGRATION_3_4)
             .build()
     }
     val repository = BuhatRepository(database, settingsStore, profileStore)

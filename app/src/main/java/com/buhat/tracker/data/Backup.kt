@@ -8,8 +8,10 @@ import com.buhat.tracker.data.local.TemplateExercise
 import com.buhat.tracker.data.local.WorkoutSession
 import com.buhat.tracker.data.local.WorkoutStatus
 import com.buhat.tracker.domain.AppTheme
+import com.buhat.tracker.domain.MAX_NOTE_LENGTH
 import com.buhat.tracker.domain.MAX_TEXT_LENGTH
 import com.buhat.tracker.domain.PreviousSetSource
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.WeightUnit
 import kotlinx.serialization.Serializable
@@ -25,7 +27,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.encodeToJsonElement
 import java.util.UUID
 
-const val BACKUP_FORMAT_VERSION = 2
+const val BACKUP_FORMAT_VERSION = 3
 const val MAX_BACKUP_BYTES = 20 * 1024 * 1024
 
 class BackupException(message: String) : Exception(message)
@@ -61,6 +63,8 @@ data class BackupExercise(
     val createdAt: Long,
     @Required val weightUnitOverride: String? = null,
     @Required val restWorkingSecondsOverride: Int? = null,
+    @Required val note: String? = null,
+    @Required val isUnilateral: Boolean = false,
 )
 
 @Serializable
@@ -93,6 +97,8 @@ data class BackupSession(
     val startedAt: Long,
     @Required val finishedAt: Long? = null,
     val status: String,
+    @Required val note: String? = null,
+    @Required val importKey: String? = null,
 )
 
 @Serializable
@@ -106,6 +112,8 @@ data class BackupSessionExercise(
     val repMin: Int,
     val repMax: Int,
     @Required val targetRir: Int? = null,
+    @Required val note: String? = null,
+    @Required val replacesSessionExerciseId: String? = null,
 )
 
 @Serializable
@@ -118,6 +126,7 @@ data class BackupSet(
     val reps: Int,
     @Required val rir: Int? = null,
     val completedAt: Long,
+    @Required val side: String? = null,
 )
 
 @Serializable
@@ -169,7 +178,11 @@ fun decodeBackup(text: String): Backup {
     if (version > BACKUP_FORMAT_VERSION) throw BackupException(NEWER_VERSION)
     if (version !in 1..BACKUP_FORMAT_VERSION) throw BackupException(NOT_A_BACKUP)
 
-    val rootToDecode = if (version == 1) withFormat2ExerciseFields(obj) else obj
+    val rootToDecode = when (version) {
+        1 -> withFormat3Fields(withFormat2ExerciseFields(obj))
+        2 -> withFormat3Fields(obj)
+        else -> obj
+    }
     val backup = try {
         backupJson.decodeFromString<Backup>(rootToDecode.toString())
     } catch (e: SerializationException) {
@@ -190,6 +203,23 @@ private fun withFormat2ExerciseFields(root: JsonObject): JsonObject {
         )
     }
     return JsonObject(root + ("exercises" to JsonArray(patched)))
+}
+
+// Format 3 added required keys to four arrays. Older files predate them, so seed JSON defaults.
+private fun withFormat3Fields(root: JsonObject): JsonObject {
+    fun patch(root: JsonObject, key: String, defaults: Map<String, JsonElement>): JsonObject {
+        val rows = root[key] as? JsonArray ?: return root
+        val patched = rows.map { element ->
+            val row = element as? JsonObject ?: return@map element
+            JsonObject(row + defaults)
+        }
+        return JsonObject(root + (key to JsonArray(patched)))
+    }
+
+    var patched = patch(root, "exercises", mapOf("note" to JsonNull, "isUnilateral" to JsonPrimitive(false)))
+    patched = patch(patched, "sessions", mapOf("note" to JsonNull, "importKey" to JsonNull))
+    patched = patch(patched, "sessionExercises", mapOf("note" to JsonNull, "replacesSessionExerciseId" to JsonNull))
+    return patch(patched, "sets", mapOf("side" to JsonNull))
 }
 
 fun Backup.summary() = BackupSummary(exportedAt, exercises.size, templates.size, sessions.size, sets.size)
@@ -250,6 +280,7 @@ private fun validateBackup(backup: Backup) {
             runCatching { WeightUnit.valueOf(unit) }.getOrNull() ?: outOfRange()
         }
         it.restWorkingSecondsOverride?.let { rest -> if (rest !in 0..600) outOfRange() }
+        it.note?.let { note -> if (note.length > MAX_NOTE_LENGTH) outOfRange() }
     }
     if (backup.exercises.map { it.name.lowercase() }.toSet().size != backup.exercises.size) {
         throw BackupException("This backup has duplicate exercise names.")
@@ -283,11 +314,19 @@ private fun validateBackup(backup: Backup) {
     backup.sessions.forEach {
         if (!validId(it.templateIdSnapshot) || it.templateNameSnapshot.isBlank()) corrupt()
         if (it.templateNameSnapshot.length > MAX_TEXT_LENGTH) outOfRange()
+        it.note?.let { note -> if (note.length > MAX_NOTE_LENGTH) outOfRange() }
+        it.importKey?.let { key ->
+            if (key.isBlank() || key.length > MAX_TEXT_LENGTH) outOfRange()
+        }
         if (it.startedAt <= 0) corrupt()
         if (it.status != WorkoutStatus.FINISHED.name) {
             throw BackupException("This backup contains a session that is still active.")
         }
         if (it.finishedAt == null || it.finishedAt < it.startedAt) corrupt()
+    }
+    val importKeys = backup.sessions.mapNotNull { it.importKey }
+    if (importKeys.size != importKeys.toSet().size) {
+        throw BackupException("This backup has a duplicate import key.")
     }
     backup.sessionExercises.forEach { row ->
         if (!validId(row.exerciseId)) corrupt()
@@ -296,6 +335,16 @@ private fun validateBackup(backup: Backup) {
             row.exerciseNameSnapshot.length > MAX_TEXT_LENGTH) outOfRange()
         if (row.repMin !in 1..30 || row.repMax !in row.repMin..30) outOfRange()
         row.targetRir?.let { if (it !in 0..5) outOfRange() }
+        row.note?.let { note -> if (note.length > MAX_NOTE_LENGTH) outOfRange() }
+    }
+    val sessionExerciseById = backup.sessionExercises.associateBy { it.id }
+    backup.sessionExercises.forEach { row ->
+        row.replacesSessionExerciseId?.let { replacedId ->
+            val replaced = sessionExerciseById[replacedId]
+            if (replaced == null || replaced.id == row.id || replaced.sessionId != row.sessionId) {
+                throw BackupException("This backup has a dangling replacement link.")
+            }
+        }
     }
     backup.sessionExercises.groupBy { it.sessionId }.forEach { (_, rows) ->
         if (rows.map { it.position }.sorted() != (1..rows.size).toList()) corrupt()
@@ -314,6 +363,7 @@ private fun validateBackup(backup: Backup) {
         val session = sessions.getValue(sessionExercises.getValue(row.sessionExerciseId).sessionId)
         if (row.completedAt < session.startedAt || row.completedAt > requireNotNull(session.finishedAt)) corrupt()
         row.rir?.let { if (it !in 0..5) outOfRange() }
+        row.side?.let { side -> runCatching { SetSide.valueOf(side) }.getOrNull() ?: corrupt() }
         if (type == SetType.WARMUP) {
             if (row.workingIndex != null) corrupt()
         } else if (row.workingIndex == null || row.workingIndex < 1) corrupt()
@@ -353,7 +403,7 @@ fun BackupSettings.toSettings() = Settings(
 
 fun Exercise.toBackup() = BackupExercise(
     id, name, muscleGroup, equipment, isCustom, archivedAt, createdAt,
-    weightUnitOverride, restWorkingSecondsOverride,
+    weightUnitOverride, restWorkingSecondsOverride, note, isUnilateral,
 )
 
 fun BackupExercise.toExercise() = Exercise(
@@ -367,6 +417,8 @@ fun BackupExercise.toExercise() = Exercise(
     createdAt = createdAt,
     weightUnitOverride = weightUnitOverride,
     restWorkingSecondsOverride = restWorkingSecondsOverride,
+    note = note,
+    isUnilateral = isUnilateral,
 )
 
 fun Template.toBackup() = BackupTemplate(id, name, isPremade, createdAt, updatedAt, archivedAt)
@@ -397,7 +449,7 @@ fun BackupTemplateExercise.toTemplateExercise() = TemplateExercise(
 )
 
 fun WorkoutSession.toBackup() = BackupSession(
-    id, templateIdSnapshot, templateNameSnapshot, startedAt, finishedAt, status.name,
+    id, templateIdSnapshot, templateNameSnapshot, startedAt, finishedAt, status.name, note, importKey,
 )
 
 fun BackupSession.toSession() = WorkoutSession(
@@ -407,10 +459,14 @@ fun BackupSession.toSession() = WorkoutSession(
     startedAt = startedAt,
     finishedAt = finishedAt,
     status = WorkoutStatus.valueOf(status),
+    note = note,
+    importKey = importKey,
+    structureDirty = false,
 )
 
 fun SessionExercise.toBackup() = BackupSessionExercise(
     id, sessionId, exerciseId, exerciseNameSnapshot, position, workingSets, repMin, repMax, targetRir,
+    note, replacesSessionExerciseId,
 )
 
 fun BackupSessionExercise.toSessionExercise() = SessionExercise(
@@ -423,10 +479,12 @@ fun BackupSessionExercise.toSessionExercise() = SessionExercise(
     repMin = repMin,
     repMax = repMax,
     targetRir = targetRir,
+    note = note,
+    replacesSessionExerciseId = replacesSessionExerciseId,
 )
 
 fun LoggedSet.toBackup() = BackupSet(
-    id, sessionExerciseId, setType.name, workingIndex, weightKg, reps, rir, completedAt,
+    id, sessionExerciseId, setType.name, workingIndex, weightKg, reps, rir, completedAt, side?.name,
 )
 
 fun BackupSet.toLoggedSet() = LoggedSet(
@@ -438,4 +496,5 @@ fun BackupSet.toLoggedSet() = LoggedSet(
     reps = reps,
     rir = rir,
     completedAt = completedAt,
+    side = side?.let { SetSide.valueOf(it) },
 )

@@ -338,6 +338,7 @@ class ActiveWorkoutTest {
         compose.onNodeWithTag("log-set").performScrollTo().performClick()
         awaitTag("set-row-1")
 
+        awaitTag("skip-rest")
         val restBefore = runBlocking {
             ApplicationProvider.getApplicationContext<BuhatApplication>().container
                 .settingsStore.settings.first().restEndsAt

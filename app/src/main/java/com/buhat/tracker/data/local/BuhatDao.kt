@@ -8,6 +8,7 @@ import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
 import androidx.room.Update
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 import kotlinx.coroutines.flow.Flow
 
@@ -193,7 +194,10 @@ interface BuhatDao {
                s.finishedAt AS finishedAt, se.exerciseId AS exerciseId,
                ls.id AS setId, ls.setType AS setType, ls.workingIndex AS workingIndex,
                ls.weightKg AS weightKg, ls.reps AS reps, ls.rir AS rir,
-               ls.completedAt AS completedAt
+               ls.completedAt AS completedAt, ls.side AS side,
+               se.note AS exerciseNote,
+               se.replacesSessionExerciseId AS replacesSessionExerciseId,
+               s.note AS sessionNote, s.importKey AS importKey
         FROM WorkoutSession s
         JOIN SessionExercise se ON se.sessionId = s.id
         JOIN LoggedSet ls ON ls.sessionExerciseId = se.id
@@ -210,7 +214,10 @@ interface BuhatDao {
                s.finishedAt AS finishedAt, se.exerciseId AS exerciseId,
                ls.id AS setId, ls.setType AS setType, ls.workingIndex AS workingIndex,
                ls.weightKg AS weightKg, ls.reps AS reps, ls.rir AS rir,
-               ls.completedAt AS completedAt
+               ls.completedAt AS completedAt, ls.side AS side,
+               se.note AS exerciseNote,
+               se.replacesSessionExerciseId AS replacesSessionExerciseId,
+               s.note AS sessionNote, s.importKey AS importKey
         FROM WorkoutSession s
         JOIN SessionExercise se ON se.sessionId = s.id
         JOIN LoggedSet ls ON ls.sessionExerciseId = se.id
@@ -246,7 +253,10 @@ interface BuhatDao {
                s.finishedAt AS finishedAt, se.exerciseId AS exerciseId,
                ls.id AS setId, ls.setType AS setType, ls.workingIndex AS workingIndex,
                ls.weightKg AS weightKg, ls.reps AS reps, ls.rir AS rir,
-               ls.completedAt AS completedAt
+               ls.completedAt AS completedAt, ls.side AS side,
+               se.note AS exerciseNote,
+               se.replacesSessionExerciseId AS replacesSessionExerciseId,
+               s.note AS sessionNote, s.importKey AS importKey
         FROM WorkoutSession s
         JOIN SessionExercise se ON se.sessionId = s.id
         JOIN LoggedSet ls ON ls.sessionExerciseId = se.id
@@ -378,6 +388,11 @@ data class HistorySetRow(
     val reps: Int,
     val rir: Int?,
     val completedAt: Long,
+    val side: SetSide?,
+    val exerciseNote: String?,
+    val replacesSessionExerciseId: String?,
+    val sessionNote: String?,
+    val importKey: String?,
 )
 
 data class ExerciseBestE1rm(

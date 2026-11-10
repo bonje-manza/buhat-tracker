@@ -1,6 +1,7 @@
 package com.buhat.tracker.data.local
 
 import androidx.room.TypeConverter
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 
 class Converters {
@@ -16,4 +17,10 @@ class Converters {
 
     @TypeConverter
     fun stringToStatus(value: String?): WorkoutStatus? = value?.let { WorkoutStatus.valueOf(it) }
+
+    @TypeConverter
+    fun sideToString(value: SetSide?): String? = value?.name
+
+    @TypeConverter
+    fun stringToSide(value: String?): SetSide? = value?.let { SetSide.valueOf(it) }
 }

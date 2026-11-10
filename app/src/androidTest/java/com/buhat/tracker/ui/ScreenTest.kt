@@ -362,6 +362,7 @@ class ScreenTest {
         addExercise("Belt", "Belt Squat")
         compose.onNodeWithTag("save-template").performClick()
 
+        awaitTag("workouts-menu")
         compose.onNodeWithTag("workouts-menu").performClick()
         clickMenuTag("open-library")
         compose.onNodeWithTag("exercise-menu-Belt Squat").performClick()
@@ -376,6 +377,7 @@ class ScreenTest {
 
     @Test
     fun profileEditsPersistAndSettingsOpens() {
+        awaitTag("profile-card")
         compose.onNodeWithTag("profile-card").performClick()
         compose.onNodeWithTag("screen-ProfileEditor").assertIsDisplayed()
         type("profile-name", "Alex")

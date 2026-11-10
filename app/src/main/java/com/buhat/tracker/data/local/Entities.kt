@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 
 // All IDs are UUID strings, timestamps epoch millis UTC, weights kilograms (roadmap 4.2).
@@ -22,6 +23,8 @@ data class Exercise(
     val createdAt: Long,
     val weightUnitOverride: String? = null,
     val restWorkingSecondsOverride: Int? = null,
+    val note: String? = null,
+    val isUnilateral: Boolean = false,
 )
 
 @Entity(
@@ -77,6 +80,7 @@ data class TemplateExercise(
         Index("status"),
         Index("finishedAt"),
         Index(value = ["status", "finishedAt"], name = "index_WorkoutSession_status_finishedAt"),
+        Index(value = ["importKey"], unique = true),
     ],
 )
 data class WorkoutSession(
@@ -87,6 +91,9 @@ data class WorkoutSession(
     val startedAt: Long,
     val finishedAt: Long?,
     val status: WorkoutStatus,
+    val note: String? = null,
+    val importKey: String? = null,
+    val structureDirty: Boolean = false,
 )
 
 enum class WorkoutStatus { ACTIVE, FINISHED }
@@ -117,6 +124,8 @@ data class SessionExercise(
     val repMin: Int,
     val repMax: Int,
     val targetRir: Int?,
+    val note: String? = null,
+    val replacesSessionExerciseId: String? = null,
 )
 
 @Entity(
@@ -145,4 +154,5 @@ data class LoggedSet(
     val reps: Int,
     val rir: Int?,
     val completedAt: Long,
+    val side: SetSide? = null,
 )

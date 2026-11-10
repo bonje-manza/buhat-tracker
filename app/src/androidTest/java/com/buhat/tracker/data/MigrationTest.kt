@@ -121,6 +121,69 @@ class MigrationTest {
     }
 
     @Test
+    fun migrate3To4KeepsEveryRowAndAddsTheNewFields() {
+        val name = newDatabaseName()
+
+        helper.createDatabase(name, 3).use { db ->
+            db.execSQL(
+                "INSERT INTO Exercise " +
+                    "(id, name, nameLower, muscleGroup, equipment, isCustom, archivedAt, createdAt, " +
+                    "weightUnitOverride, restWorkingSecondsOverride) " +
+                    "VALUES ('e1', 'Bench Press', 'bench press', 'Chest', 'Barbell', 0, NULL, 1, 'LB', 180)",
+            )
+            db.execSQL(
+                "INSERT INTO Template (id, name, nameLower, isPremade, createdAt, updatedAt, archivedAt) " +
+                    "VALUES ('t1', 'Push Day A', 'push day a', 1, 1, 2, NULL)",
+            )
+            db.execSQL(
+                "INSERT INTO TemplateExercise " +
+                    "(id, templateId, exerciseId, position, workingSets, repMin, repMax, targetRir) " +
+                    "VALUES ('te1', 't1', 'e1', 1, 3, 6, 10, 2)",
+            )
+            db.execSQL(
+                "INSERT INTO WorkoutSession " +
+                    "(id, templateIdSnapshot, templateNameSnapshot, startedAt, finishedAt, status) " +
+                    "VALUES ('s1', 't1', 'Push Day A', 10, 20, 'FINISHED')",
+            )
+            db.execSQL(
+                "INSERT INTO SessionExercise " +
+                    "(id, sessionId, exerciseId, exerciseNameSnapshot, position, workingSets, repMin, repMax, targetRir) " +
+                    "VALUES ('se1', 's1', 'e1', 'Bench Press', 1, 3, 6, 10, 2)",
+            )
+            db.execSQL(
+                "INSERT INTO LoggedSet " +
+                    "(id, sessionExerciseId, setType, workingIndex, weightKg, reps, rir, completedAt) " +
+                    "VALUES ('ls1', 'se1', 'WORKING', 1, 80.0, 8, 2, 15)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(name, 4, true, BuhatDatabase.MIGRATION_3_4)
+
+        migrated.use { db ->
+            assertEquals(1, db.count("Exercise"))
+            assertEquals(1, db.count("Template"))
+            assertEquals(1, db.count("TemplateExercise"))
+            assertEquals(1, db.count("WorkoutSession"))
+            assertEquals(1, db.count("SessionExercise"))
+            assertEquals(1, db.count("LoggedSet"))
+            assertEquals("Bench Press", db.singleString("SELECT name FROM Exercise WHERE id = 'e1'"))
+            assertEquals("LB", db.singleString("SELECT weightUnitOverride FROM Exercise WHERE id = 'e1'"))
+            assertNull(db.singleString("SELECT note FROM Exercise WHERE id = 'e1'"))
+            assertEquals("0", db.singleString("SELECT isUnilateral FROM Exercise WHERE id = 'e1'"))
+            assertEquals("Push Day A", db.singleString("SELECT templateNameSnapshot FROM WorkoutSession WHERE id = 's1'"))
+            assertNull(db.singleString("SELECT note FROM WorkoutSession WHERE id = 's1'"))
+            assertNull(db.singleString("SELECT importKey FROM WorkoutSession WHERE id = 's1'"))
+            assertEquals("0", db.singleString("SELECT structureDirty FROM WorkoutSession WHERE id = 's1'"))
+            assertNull(db.singleString("SELECT note FROM SessionExercise WHERE id = 'se1'"))
+            assertNull(db.singleString("SELECT replacesSessionExerciseId FROM SessionExercise WHERE id = 'se1'"))
+            assertNull(db.singleString("SELECT side FROM LoggedSet WHERE id = 'ls1'"))
+            assertEquals(80.0, db.singleString("SELECT weightKg FROM LoggedSet WHERE id = 'ls1'")!!.toDouble(), 0.0)
+            assertTrue(db.indexNames().contains("index_WorkoutSession_importKey"))
+            assertTrue(db.indexNames().containsAll(V1_INDEX_NAMES))
+        }
+    }
+
+    @Test
     fun migrate1To3RunsTheWholeChain() {
         val name = newDatabaseName()
 

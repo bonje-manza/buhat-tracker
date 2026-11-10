@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.buhat.tracker.data.local.BuhatDatabase
 import com.buhat.tracker.domain.AppTheme
 import com.buhat.tracker.domain.PreviousSetSource
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.TemplateExerciseDraft
@@ -22,6 +23,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -115,7 +117,7 @@ class BackupRepositoryTest {
         val json = repo.exportBackup()
         val backup = decodeBackup(json)
 
-        assertEquals(2, backup.formatVersion)
+        assertEquals(3, backup.formatVersion)
         assertEquals(57, backup.exercises.size)
         assertEquals(6, backup.templates.size)
         assertEquals(26, backup.templateExercises.size)
@@ -176,7 +178,7 @@ class BackupRepositoryTest {
     @Test
     fun newerVersionImportLeavesExistingDataUntouched() = runTest {
         val exported = repo.exportBackup()
-        val newer = exported.replace("\"formatVersion\": 2", "\"formatVersion\": 3")
+        val newer = exported.replace("\"formatVersion\": 3", "\"formatVersion\": 4")
         val before = counts()
 
         val error = assertThrows(BackupException::class.java) { runBlocking { repo.importBackup(newer) } }
@@ -272,6 +274,62 @@ class BackupRepositoryTest {
         val restored = repo.exercise(bench)!!
         assertEquals("LB", restored.weightUnitOverride)
         assertEquals(180, restored.restWorkingSecondsOverride)
+    }
+
+    @Test
+    fun newFieldsSurviveDatabaseExportAndImport() = runTest {
+        val dao = db.dao()
+        val set = dao.allSets().first()
+        val sessionExercise = dao.sessionExerciseById(set.sessionExerciseId)!!
+        val exercise = dao.exerciseById(sessionExercise.exerciseId)!!
+        dao.updateExercise(exercise.copy(note = "Keep elbows tucked", isUnilateral = true))
+        val session = dao.allSessions().single()
+        dao.updateSession(session.copy(note = "Felt strong", importKey = "strong:fixture"))
+        val replacedId = dao.allSessionExercises().first { it.id != sessionExercise.id }.id
+        db.openHelper.writableDatabase.execSQL(
+            "UPDATE SessionExercise SET note = ?, replacesSessionExerciseId = ? WHERE id = ?",
+            arrayOf("Left felt weaker", replacedId, sessionExercise.id),
+        )
+        dao.updateSet(set.copy(side = SetSide.LEFT))
+
+        val exported = repo.exportBackup()
+        val empty = decodeBackup(exported).copy(
+            profile = BackupProfile(),
+            exercises = emptyList(),
+            templates = emptyList(),
+            templateExercises = emptyList(),
+            sessions = emptyList(),
+            sessionExercises = emptyList(),
+            sets = emptyList(),
+        )
+        repo.importBackup(encodeBackup(empty))
+        repo.importBackup(exported)
+
+        assertEquals("Keep elbows tucked", dao.allExercises().first { it.id == exercise.id }.note)
+        assertTrue(dao.allExercises().first { it.id == exercise.id }.isUnilateral)
+        val restoredSession = dao.allSessions().single()
+        assertEquals("Felt strong", restoredSession.note)
+        assertEquals("strong:fixture", restoredSession.importKey)
+        assertFalse(restoredSession.structureDirty)
+        assertEquals("Left felt weaker", dao.allSessionExercises().first { it.id == sessionExercise.id }.note)
+        assertEquals(replacedId, dao.sessionExerciseById(sessionExercise.id)!!.replacesSessionExerciseId)
+        assertEquals(SetSide.LEFT, dao.allSets().first { it.id == set.id }.side)
+
+        val histories = listOf(
+            repo.history().first(),
+            repo.historyForExercise(exercise.id).first(),
+            repo.latestHistoryForExercise(exercise.id, session.templateIdSnapshot).first(),
+            repo.homeDashboard(requireNotNull(session.finishedAt)).first().window,
+        )
+        for (sessions in histories) {
+            val history = sessions.single()
+            assertEquals("Felt strong", history.note)
+            assertEquals("strong:fixture", history.importKey)
+            val row = history.exercises.first { it.exerciseId == exercise.id }
+            assertEquals("Left felt weaker", row.note)
+            assertEquals(replacedId, row.replacesSessionExerciseId)
+            assertEquals(SetSide.LEFT, row.sets.first { it.id == set.id }.side)
+        }
     }
 
     @Test fun preferenceWriteFailureIsReportedAndSameFileCanBeRetried() = runTest {

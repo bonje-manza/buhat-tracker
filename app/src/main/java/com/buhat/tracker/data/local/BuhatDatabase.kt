@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionExercise::class,
         LoggedSet::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -39,6 +39,19 @@ abstract class BuhatDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE Exercise ADD COLUMN weightUnitOverride TEXT")
                 db.execSQL("ALTER TABLE Exercise ADD COLUMN restWorkingSecondsOverride INTEGER")
+            }
+        }
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE Exercise ADD COLUMN note TEXT")
+                db.execSQL("ALTER TABLE Exercise ADD COLUMN isUnilateral INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE WorkoutSession ADD COLUMN note TEXT")
+                db.execSQL("ALTER TABLE WorkoutSession ADD COLUMN importKey TEXT")
+                db.execSQL("ALTER TABLE WorkoutSession ADD COLUMN structureDirty INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE SessionExercise ADD COLUMN note TEXT")
+                db.execSQL("ALTER TABLE SessionExercise ADD COLUMN replacesSessionExerciseId TEXT")
+                db.execSQL("ALTER TABLE LoggedSet ADD COLUMN side TEXT")
+                db.execSQL("CREATE UNIQUE INDEX index_WorkoutSession_importKey ON WorkoutSession(importKey)")
             }
         }
     }

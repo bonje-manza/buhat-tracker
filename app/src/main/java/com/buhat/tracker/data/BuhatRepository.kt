@@ -520,6 +520,7 @@ class BuhatRepository(
         reps = reps,
         rir = rir,
         completedAt = completedAt,
+        side = side,
     )
 
     private fun FinishedWorkout.toHistorySession() = HistorySession(
@@ -527,11 +528,15 @@ class BuhatRepository(
         templateIdSnapshot = session.templateIdSnapshot,
         finishedAt = requireNotNull(session.finishedAt),
         templateNameSnapshot = session.templateNameSnapshot,
+        note = session.note,
+        importKey = session.importKey,
         exercises = exercises.sortedBy { it.exercise.position }.map { row ->
             HistoryExercise(
                 exerciseId = row.exercise.exerciseId,
                 exerciseNameSnapshot = row.exercise.exerciseNameSnapshot,
                 sets = row.sets.sortedBy { it.completedAt }.map { it.toRecord() },
+                note = row.exercise.note,
+                replacesSessionExerciseId = row.exercise.replacesSessionExerciseId,
             )
         },
     )
@@ -544,8 +549,15 @@ class BuhatRepository(
                 templateIdSnapshot = first.templateIdSnapshot,
                 finishedAt = requireNotNull(first.finishedAt),
                 templateNameSnapshot = first.templateNameSnapshot,
+                note = first.sessionNote,
+                importKey = first.importKey,
                 exercises = rows.groupBy { it.exerciseId }.map { (exerciseId, sets) ->
-                    HistoryExercise(exerciseId, sets.map { it.toRecord() })
+                    HistoryExercise(
+                        exerciseId = exerciseId,
+                        sets = sets.map { it.toRecord() },
+                        note = sets.first().exerciseNote,
+                        replacesSessionExerciseId = sets.first().replacesSessionExerciseId,
+                    )
                 },
             )
         }
@@ -682,4 +694,5 @@ fun LoggedSet.toRecord() = LoggedSetRecord(
     reps = reps,
     rir = rir,
     completedAt = completedAt,
+    side = side,
 )

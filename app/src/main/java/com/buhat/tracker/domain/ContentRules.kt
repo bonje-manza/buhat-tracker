@@ -13,6 +13,7 @@ data class TemplateExerciseDraft(
 class ContentValidationException(message: String) : IllegalArgumentException(message)
 
 const val MAX_TEXT_LENGTH = 200
+const val MAX_NOTE_LENGTH = 2000
 
 fun validateTextLength(text: String?, field: String): String? =
     if (text != null && text.trim().length > MAX_TEXT_LENGTH) {
