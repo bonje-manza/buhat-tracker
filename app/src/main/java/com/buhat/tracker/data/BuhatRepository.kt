@@ -20,6 +20,7 @@ import com.buhat.tracker.domain.HistoryExercise
 import com.buhat.tracker.domain.HistorySession
 import com.buhat.tracker.domain.LoggedSetRecord
 import com.buhat.tracker.domain.MAX_NOTE_LENGTH
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.domain.WeightUnit
@@ -528,6 +529,7 @@ class BuhatRepository(
         weightKg: Double,
         reps: Int,
         rir: Int?,
+        side: SetSide? = null,
     ): String = sessionWriteMutex.withLock {
         validateSet(weightKg, reps, rir)?.let { throw SessionValidationException(it) }
         val dao = database.dao()
@@ -553,6 +555,7 @@ class BuhatRepository(
                     reps = reps,
                     rir = rir,
                     completedAt = now,
+                    side = side,
                 ),
             ),
         )
@@ -584,6 +587,7 @@ class BuhatRepository(
         weightKg: Double,
         reps: Int,
         rir: Int?,
+        side: SetSide? = null,
     ) {
         validateSet(weightKg, reps, rir)?.let { throw SessionValidationException(it) }
         val dao = database.dao()
@@ -595,6 +599,7 @@ class BuhatRepository(
                     weightKg = weightKg,
                     reps = reps,
                     rir = rir,
+                    side = side,
                     workingIndex = if (setType == existing.setType) existing.workingIndex else null,
                 ),
             )
@@ -870,3 +875,5 @@ fun LoggedSet.toRecord() = LoggedSetRecord(
     completedAt = completedAt,
     side = side,
 )
+
+

@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.buhat.tracker.data.local.BuhatDatabase
 import com.buhat.tracker.data.local.WorkoutStatus
 import com.buhat.tracker.domain.PreviousSetSource
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.domain.sourceSetForPosition
@@ -259,6 +260,42 @@ class SessionRepositoryTest {
         // Warmups are not numbered; working and failure share the 1..N sequence.
         assertEquals(listOf(null, 1, 2), sets.map { it.workingIndex })
         assertFalse(repo.session(sessionId)!!.structureDirty)
+    }
+
+    @Test
+    fun loggedSidesAreStoredInCompletionOrderAndRestStartsAfterEach() = runTest {
+        val sessionId = repo.startSession(premadeTemplateId("Push Day A"))
+        val bench = firstExerciseOf(sessionId)
+
+        repo.logSet(bench.id, SetType.WORKING, weightKg = 40.0, reps = 8, rir = 2, side = SetSide.LEFT)
+        val afterLeft = repo.settingsStore.settings.first().restEndsAt
+        assertNotNull(afterLeft)
+        assertTrue(afterLeft!! > System.currentTimeMillis())
+
+        repo.logSet(bench.id, SetType.WORKING, weightKg = 20.0, reps = 8, rir = 2, side = SetSide.RIGHT)
+        val afterRight = repo.settingsStore.settings.first().restEndsAt
+        assertNotNull(afterRight)
+        assertTrue(afterRight!! > afterLeft)
+
+        val sets = repo.loggedSets(bench.id).first()
+        assertEquals(listOf(SetSide.LEFT, SetSide.RIGHT), sets.map { it.side })
+        assertEquals(listOf(1, 2), sets.map { it.workingIndex })
+        assertEquals(listOf(40.0, 20.0), sets.map { it.weightKg })
+    }
+
+    @Test
+    fun correctingASideKeepsTheWorkingIndex() = runTest {
+        val sessionId = repo.startSession(premadeTemplateId("Push Day A"))
+        val bench = firstExerciseOf(sessionId)
+        repo.logSet(bench.id, SetType.WORKING, weightKg = 40.0, reps = 8, rir = 2, side = SetSide.LEFT)
+        repo.logSet(bench.id, SetType.WORKING, weightKg = 20.0, reps = 8, rir = 2, side = SetSide.LEFT)
+        val first = repo.loggedSets(bench.id).first().first()
+
+        repo.updateSet(first.id, SetType.WORKING, weightKg = 40.0, reps = 8, rir = 2, side = SetSide.RIGHT)
+
+        val sets = repo.loggedSets(bench.id).first()
+        assertEquals(listOf(SetSide.RIGHT, SetSide.LEFT), sets.map { it.side })
+        assertEquals(listOf(1, 2), sets.map { it.workingIndex })
     }
 
     @Test
