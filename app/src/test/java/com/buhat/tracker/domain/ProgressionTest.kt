@@ -13,6 +13,7 @@ class ProgressionTest {
         weight: Double = 80.0,
         reps: Int = 10,
         at: Long = 0L,
+        side: SetSide? = null,
     ) = LoggedSetRecord(
         id = id,
         setType = type,
@@ -21,6 +22,7 @@ class ProgressionTest {
         reps = reps,
         rir = 2,
         completedAt = at,
+        side = side,
     )
 
     private fun session(
@@ -269,5 +271,72 @@ class ProgressionTest {
         assertEquals(0.0, target.weightKg!!, 0.0)
         assertEquals(10, target.reps)
         assertEquals("Beat 10 reps.", target.message)
+    }
+
+    @Test
+    fun perSideNumberingCountsOnlyThatSidesWorkingSets() {
+        val sets = listOf(
+            set("left-1", index = 1, at = 1, side = SetSide.LEFT),
+            set("right-1", index = 2, at = 2, side = SetSide.RIGHT),
+            set("left-2", index = 3, at = 3, side = SetSide.LEFT),
+        )
+
+        val left = numberWorkingSets(sets, SetSide.LEFT)
+
+        assertEquals(listOf("left-1", "left-2"), left.map { it.set.id })
+        assertEquals(listOf(1, 2), left.map { it.position })
+    }
+
+    @Test
+    fun sideLookupUsesThePositionsOwnSideNotTheGlobalWorkingIndex() {
+        val source = session(
+            id = "previous",
+            finishedAt = 100,
+            sets = listOf(
+                set("left-1", index = 1, weight = 40.0, at = 1, side = SetSide.LEFT),
+                set("right-1", index = 2, weight = 20.0, at = 2, side = SetSide.RIGHT),
+                set("left-2", index = 3, weight = 42.5, at = 3, side = SetSide.LEFT),
+            ),
+        )
+
+        val picked = sourceSetForPosition(
+            listOf(source), "squat", position = 2, PreviousSetSource.ANY_WORKOUT, "", side = SetSide.LEFT,
+        )
+
+        assertEquals("left-2", picked!!.id)
+    }
+
+    @Test
+    fun sourceLookupFlattensOccurrencesAndFiltersBySide() {
+        val source = HistorySession(
+            id = "previous",
+            templateIdSnapshot = "template-a",
+            finishedAt = 100,
+            exercises = listOf(
+                HistoryExercise("squat", listOf(set("left-1", index = 1, at = 1, side = SetSide.LEFT))),
+                HistoryExercise("squat", listOf(set("right-1", index = 2, at = 2, side = SetSide.RIGHT))),
+            ),
+        )
+
+        val picked = sourceSetForPosition(
+            listOf(source), "squat", position = 1, PreviousSetSource.ANY_WORKOUT, "", side = SetSide.RIGHT,
+        )
+
+        assertEquals("right-1", picked!!.id)
+    }
+
+    @Test
+    fun unsidedSetsNeverSourceASideTarget() {
+        val source = session(
+            id = "previous",
+            finishedAt = 100,
+            sets = listOf(set("unsided", index = 1, at = 1)),
+        )
+
+        val picked = sourceSetForPosition(
+            listOf(source), "squat", position = 1, PreviousSetSource.ANY_WORKOUT, "", side = SetSide.LEFT,
+        )
+
+        assertNull(picked)
     }
 }

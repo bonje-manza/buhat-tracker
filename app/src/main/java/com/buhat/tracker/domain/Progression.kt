@@ -11,9 +11,9 @@ data class ProgressionTarget(
     val message: String,
 )
 
-fun numberWorkingSets(sets: List<LoggedSetRecord>): List<SetAtPosition> =
+fun numberWorkingSets(sets: List<LoggedSetRecord>, side: SetSide? = null): List<SetAtPosition> =
     sets.sortedBy { it.completedAt }
-        .filter { it.setType.countsForProgression }
+        .filter { it.setType.countsForProgression && it.side == side }
         .mapIndexed { index, set -> SetAtPosition(set, index + 1) }
 
 fun sourceSetForPosition(
@@ -22,6 +22,7 @@ fun sourceSetForPosition(
     position: Int,
     source: PreviousSetSource,
     templateIdSnapshot: String,
+    side: SetSide? = null,
 ): LoggedSetRecord? {
     val ordered = history.sortedByDescending { it.finishedAt }
     val matchingTemplate = ordered.firstOrNull { session ->
@@ -38,11 +39,11 @@ fun sourceSetForPosition(
     } ?: return null
 
     val working = session.exercises
-        .first { it.exerciseId == exerciseId }
-        .sets
-        .filter { it.setType.countsForProgression }
-    return working.firstOrNull { it.workingIndex == position }
-        ?: working.maxByOrNull { it.completedAt }
+        .filter { it.exerciseId == exerciseId }
+        .flatMap { it.sets }
+        .filter { it.setType.countsForProgression && it.side == side }
+        .sortedBy { it.completedAt }
+    return working.getOrNull(position - 1) ?: working.lastOrNull()
 }
 
 fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int, unit: WeightUnit = WeightUnit.KG): ProgressionTarget {
@@ -74,3 +75,5 @@ fun nextTarget(source: LoggedSetRecord?, repMin: Int, repMax: Int, unit: WeightU
 
 fun formatKg(value: Double): String =
     BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+
+

@@ -14,6 +14,7 @@ class SessionRulesTest {
         reps: Int = 10,
         rir: Int? = 2,
         at: Long = 0L,
+        side: SetSide? = null,
     ) = LoggedSetRecord(
         id = id,
         setType = type,
@@ -22,6 +23,7 @@ class SessionRulesTest {
         reps = reps,
         rir = rir,
         completedAt = at,
+        side = side,
     )
 
     @Test
@@ -102,6 +104,36 @@ class SessionRulesTest {
         assertEquals("3", rirLabel(3))
         assertEquals("4+", rirLabel(4))
         assertEquals("4+", rirLabel(5))
+    }
+
+    @Test
+    fun prefillFallbackOnlyUsesTheSelectedSide() {
+        val lastLeft = set("left", weight = 40.0, reps = 12, at = 10, side = SetSide.LEFT)
+
+        val right = prefillFor(source = null, lastSetInSession = lastLeft, side = SetSide.RIGHT)
+        val left = prefillFor(source = null, lastSetInSession = lastLeft, side = SetSide.LEFT)
+
+        assertNull(right.weightKg)
+        assertNull(right.reps)
+        assertEquals(40.0, left.weightKg!!, 0.0)
+        assertEquals(12, left.reps)
+    }
+
+    @Test
+    fun defaultSideAlternatesFromTheMostRecentSide() {
+        val lastRight = listOf(
+            set("left", at = 1, side = SetSide.LEFT),
+            set("right", at = 2, side = SetSide.RIGHT),
+        )
+        val lastLeft = listOf(
+            set("right", at = 1, side = SetSide.RIGHT),
+            set("left", at = 2, side = SetSide.LEFT),
+        )
+
+        assertEquals(SetSide.LEFT, defaultSide(lastRight))
+        assertEquals(SetSide.RIGHT, defaultSide(lastLeft))
+        assertEquals(SetSide.LEFT, defaultSide(listOf(set("unsided", at = 1))))
+        assertEquals(SetSide.LEFT, defaultSide(emptyList()))
     }
 
     @Test

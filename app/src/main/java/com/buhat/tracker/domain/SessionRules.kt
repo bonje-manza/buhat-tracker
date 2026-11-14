@@ -8,11 +8,19 @@ data class Prefill(
     val rir: Int,
 )
 
-/** Raw values for the logging card: the matching source position, else the last set just logged. */
-fun prefillFor(source: LoggedSetRecord?, lastSetInSession: LoggedSetRecord?): Prefill {
-    val base = source ?: lastSetInSession
+/** Raw values for the logging card: the matching source position, else the last set just logged on that side. */
+fun prefillFor(source: LoggedSetRecord?, lastSetInSession: LoggedSetRecord?, side: SetSide? = null): Prefill {
+    val base = source ?: lastSetInSession?.takeIf { it.side == side }
     return Prefill(base?.weightKg, base?.reps, base?.rir ?: DEFAULT_RIR)
 }
+
+/** Opposite of the latest completed side, so a unilateral exercise alternates sides. */
+fun defaultSide(sets: List<LoggedSetRecord>): SetSide =
+    if (sets.filter { it.side != null }.maxByOrNull { it.completedAt }?.side == SetSide.LEFT) {
+        SetSide.RIGHT
+    } else {
+        SetSide.LEFT
+    }
 
 /** Rewrites working indices to 1..N in completion order; warmups stay null. */
 fun renumberWorkingSets(sets: List<LoggedSetRecord>): List<LoggedSetRecord> {
