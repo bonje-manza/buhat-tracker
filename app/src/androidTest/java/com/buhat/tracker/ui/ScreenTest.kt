@@ -137,6 +137,10 @@ class ScreenTest {
 
     @Test
     fun workoutsFiltersAndCreatesTemplate() {
+        runBlocking {
+            ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+                .saveExercisePreferences(seededId("exercise", "Bench Press"), null, null, null, true)
+        }
         openWorkouts()
         compose.onNodeWithText("6 templates").assertExists()
 
@@ -147,6 +151,7 @@ class ScreenTest {
         compose.onNodeWithTag("screen-TemplateEditor").assertIsDisplayed()
         type("template-name", "Leg Day C")
         addExercise("Bench", "Bench Press")
+        compose.onNodeWithText("Sets/side", useUnmergedTree = true).assertExists()
         type("sets-Bench Press", "4")
         type("repmin-Bench Press", "8")
         type("repmax-Bench Press", "12")

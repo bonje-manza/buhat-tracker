@@ -1,9 +1,11 @@
 package com.buhat.tracker.ui
 
 import android.Manifest
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -26,6 +28,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.buhat.tracker.BuhatApplication
 import com.buhat.tracker.MainActivity
 import com.buhat.tracker.data.seededId
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.domain.lbToKg
@@ -958,5 +961,114 @@ class ActiveWorkoutTest {
         awaitTag("active-empty")
         compose.onNodeWithTag("active-empty").assertIsDisplayed()
         compose.onNodeWithText("Start a workout from Workouts.").assertExists()
+    }
+
+    private fun markUnilateral(name: String) = runBlocking {
+        ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            .saveExercisePreferences(seededId("exercise", name), null, null, null, true)
+    }
+
+    private fun awaitTagText(tag: String, text: String) {
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag(tag) and hasText(text)).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun awaitRowText(index: Int, text: String) {
+        awaitTagText("set-row-$index", text)
+    }
+
+    @Test
+    fun unilateralLoggingAlternatesSidesAndKeepsEachSet() {
+        markUnilateral("Bench Press")
+        startPushDayA()
+        awaitTag("segmented-Left")
+        compose.onNodeWithTag("segmented-Left").assertIsSelected()
+
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("40")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitRowText(1, "L")
+        compose.onNodeWithTag("segmented-Right").assertIsSelected()
+
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("20")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitRowText(2, "R")
+
+        compose.onNodeWithTag("set-row-1").assert(hasText("L"))
+        compose.onNodeWithTag("set-row-2").assert(hasText("R"))
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.activeSession().first()!!
+            val bench = repo.sessionExercises(session.id).first()
+                .single { it.exerciseNameSnapshot == "Bench Press" }
+            val sets = repo.loggedSets(bench.id).first()
+            assertEquals(listOf(SetSide.LEFT, SetSide.RIGHT), sets.map { it.side })
+            assertEquals(listOf(1, 2), sets.map { it.workingIndex })
+        }
+    }
+
+    @Test
+    fun sideSelectionSurvivesRecreation() {
+        markUnilateral("Bench Press")
+        startPushDayA()
+        awaitTag("segmented-Right")
+        compose.onNodeWithTag("segmented-Right").performClick()
+        compose.onNodeWithTag("segmented-Right").assertIsSelected()
+
+        compose.activityRule.scenario.recreate()
+        awaitTag("segmented-Right")
+        compose.onNodeWithTag("segmented-Right").assertIsSelected()
+        compose.onNodeWithTag("segmented-Left").assertIsNotSelected()
+    }
+
+    @Test
+    fun editingASetCanCorrectItsSide() {
+        markUnilateral("Bench Press")
+        startPushDayA()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("40")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitRowText(1, "L")
+
+        compose.onNodeWithTag("set-row-1").performClick()
+        awaitTag("edit-side-Right")
+        compose.onNodeWithTag("edit-side-Right").performClick()
+        compose.onNodeWithTag("save-set").performClick()
+
+        awaitRowText(1, "R")
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.activeSession().first()!!
+            val bench = repo.sessionExercises(session.id).first()
+                .single { it.exerciseNameSnapshot == "Bench Press" }
+            assertEquals(SetSide.RIGHT, repo.loggedSets(bench.id).first().single().side)
+        }
+    }
+
+    @Test
+    fun perSidePrescriptionCopy() {
+        markUnilateral("Seated Cable Row")
+        startPushDayA()
+
+        compose.onNodeWithTag("active-menu").performClick()
+        compose.onNodeWithTag("add-session-exercise").performClick()
+        awaitTag("session-picker-search")
+        compose.onNodeWithTag("session-picker-search").performTextReplacement("cable row")
+        compose.onNodeWithTag("session-picker-Seated Cable Row").performClick()
+        awaitTag("session-sets")
+        compose.onNodeWithText("Sets/side").assertExists()
+        compose.onNodeWithText("Sets").assertDoesNotExist()
+        compose.onNodeWithText("Cancel").performClick()
+
+        compose.onNodeWithTag("active-menu").performClick()
+        compose.onNodeWithTag("add-session-exercise").performClick()
+        awaitTag("session-picker-search")
+        compose.onNodeWithTag("session-picker-search").performTextReplacement("leg extension")
+        compose.onNodeWithTag("session-picker-Leg Extension").performClick()
+        awaitTag("session-sets")
+        compose.onNodeWithText("Sets").assertExists()
+        compose.onNodeWithText("Sets/side").assertDoesNotExist()
     }
 }

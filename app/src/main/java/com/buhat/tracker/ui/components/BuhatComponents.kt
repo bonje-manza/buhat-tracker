@@ -132,6 +132,7 @@ fun BuhatSegmentedControl(
     modifier: Modifier = Modifier,
     selectedColor: Color = MaterialTheme.colorScheme.onSurface,
     selectedContentColor: Color = MaterialTheme.colorScheme.background,
+    tagPrefix: String = "",
 ) {
     val scheme = MaterialTheme.colorScheme
     Row(
@@ -155,7 +156,7 @@ fun BuhatSegmentedControl(
                         role = androidx.compose.ui.semantics.Role.RadioButton,
                         onClick = { onSelect(index) },
                     )
-                    .testTag("segmented-$option")
+                    .testTag("${tagPrefix.ifEmpty { "segmented" }}-$option")
                     .padding(horizontal = 6.dp, vertical = 8.dp)
                     .align(Alignment.CenterVertically),
                 contentAlignment = Alignment.Center,

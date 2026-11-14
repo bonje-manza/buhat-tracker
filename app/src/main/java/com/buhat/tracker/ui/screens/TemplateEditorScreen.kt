@@ -153,6 +153,7 @@ fun TemplateEditorScreen(
             rows.forEachIndexed { index, row ->
                 DraftRowCard(
                     row = row,
+                    isUnilateral = library.firstOrNull { it.id == row.exerciseId }?.isUnilateral == true,
                     canMoveUp = index > 0,
                     canMoveDown = index < rows.lastIndex,
                     onChange = { updated ->
@@ -213,6 +214,7 @@ fun TemplateEditorScreen(
 @Composable
 private fun DraftRowCard(
     row: DraftRow,
+    isUnilateral: Boolean,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onChange: (DraftRow) -> Unit,
@@ -250,7 +252,7 @@ private fun DraftRowCard(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            NumberField("Sets", row.sets, "sets-${row.exerciseName}", Modifier.weight(1f)) {
+            NumberField(if (isUnilateral) "Sets/side" else "Sets", row.sets, "sets-${row.exerciseName}", Modifier.weight(1f)) {
                 onChange(row.copy(sets = it))
             }
             NumberField("Min", row.repMin, "repmin-${row.exerciseName}", Modifier.weight(1f)) {

@@ -71,8 +71,10 @@ import com.buhat.tracker.data.local.LoggedSet
 import com.buhat.tracker.data.local.SessionExercise
 import com.buhat.tracker.data.local.WorkoutSession
 import com.buhat.tracker.data.toRecord
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.WeightUnit
+import com.buhat.tracker.domain.defaultSide
 import com.buhat.tracker.domain.effectiveUnit
 import com.buhat.tracker.domain.formatElapsed
 import com.buhat.tracker.domain.formatRest
@@ -105,6 +107,7 @@ import kotlinx.coroutines.withContext
 private val SET_TYPES = listOf(SetType.WARMUP, SetType.WORKING, SetType.FAILURE)
 private val SET_TYPE_LABELS = SET_TYPES.map { it.label }
 private val RIR_CHOICES = listOf(0, 1, 2, 3, 4)
+private val SIDE_LABELS = listOf("Left", "Right")
 
 @Composable
 fun ActiveWorkoutScreen(repository: BuhatRepository, restTimer: RestTimer, onStartWorkout: () -> Unit) {
@@ -263,8 +266,22 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
         }
     }
 
+    val unilateral = exerciseRow?.isUnilateral == true
+    var sideChoice by rememberSaveable(session.id) { mutableStateOf<String?>(null) }
+    var lastSelectedId by rememberSaveable(session.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(selected?.id) {
+        val id = selected?.id
+        if (id != null && id != lastSelectedId) {
+            sideChoice = null
+            lastSelectedId = id
+        }
+    }
+
     val records = sets.map { it.toRecord() }
-    val workingCount = numberWorkingSets(records).size
+    val autoSide = defaultSide(records)
+    val side = sideChoice?.let { SetSide.valueOf(it) } ?: autoSide
+    val activeSide = side.takeIf { unilateral }
+    val workingCount = numberWorkingSets(records, activeSide).size
     val position = workingCount + 1
     val source = selected?.let {
         sourceSetForPosition(
@@ -273,30 +290,31 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             position = position,
             source = settings.previousSetSource,
             templateIdSnapshot = session.templateIdSnapshot,
+            side = activeSide,
         )
     }
     val unit = exerciseRow?.effectiveUnit(settings.unit) ?: settings.unit
     val target = selected?.let { nextTarget(source, it.repMin, it.repMax, unit) }
-    val prefill = prefillFor(source, records.lastOrNull())
+    val prefill = prefillFor(source, records.lastOrNull(), activeSide)
 
     // Prefill keys include the source values: history flows in after the first frame, and the
     // form must adopt them without wiping a user edit (prefill only changes on new data).
-    var weightText by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps) {
+    var weightText by rememberSaveable(selected?.id, activeSide, position, prefill.weightKg, prefill.reps) {
         mutableStateOf(prefill.weightKg?.let { formatWeightValue(it, unit) } ?: "")
     }
     // kg keeps generated values exact; parsing the rounded lb display back would drift.
-    var weightKg by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps) {
+    var weightKg by rememberSaveable(selected?.id, activeSide, position, prefill.weightKg, prefill.reps) {
         mutableStateOf(prefill.weightKg)
     }
     // A unit change only reformats the display, so a typed weight survives the switch.
     LaunchedEffect(unit) { weightText = weightKg?.let { formatWeightValue(it, unit) } ?: "" }
-    var repsText by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps) {
+    var repsText by rememberSaveable(selected?.id, activeSide, position, prefill.weightKg, prefill.reps) {
         mutableStateOf(prefill.reps?.toString() ?: "")
     }
-    var rir by rememberSaveable(selected?.id, position, prefill.weightKg, prefill.reps) {
+    var rir by rememberSaveable(selected?.id, activeSide, position, prefill.weightKg, prefill.reps) {
         mutableStateOf(prefill.rir)
     }
-    var typeIndex by rememberSaveable(selected?.id, position) { mutableStateOf(1) }
+    var typeIndex by rememberSaveable(selected?.id, activeSide, position) { mutableStateOf(1) }
     var error by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
@@ -331,7 +349,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
         scope.launch {
             try {
                 withContext(NonCancellable) {
-                    repository.logSet(exercise.id, SET_TYPES[typeIndex], kg, reps, rir)
+                    repository.logSet(exercise.id, SET_TYPES[typeIndex], kg, reps, rir, side = activeSide)
                     val nextRest = repository.settingsStore.settings.first().restEndsAt
                         ?.takeIf { it > System.currentTimeMillis() }
                     if (nextRest != null) restTimer.start(nextRest) else restTimer.cancel()
@@ -539,6 +557,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             initialRepMin = 8,
             initialRepMax = 12,
             initialRir = null,
+            isUnilateral = exercise.isUnilateral,
             error = dialogError,
             onDismiss = {
                 pendingAdd = null
@@ -574,6 +593,7 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
             initialRepMin = editTarget.repMin,
             initialRepMax = editTarget.repMax,
             initialRir = editTarget.targetRir,
+            isUnilateral = unilateral,
             error = dialogError,
             onDismiss = {
                 editOpen = false
@@ -723,6 +743,13 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                set.side?.let {
+                    Text(
+                        text = if (it == SetSide.LEFT) "L" else "R",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
                 SetTypeBadge(set.setType)
                 Text(
                     text = "${formatWeight(set.weightKg, unit)} × ${set.reps}",
@@ -755,6 +782,18 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     Spacer(Modifier.height(16.dp))
 
     BuhatCard {
+        if (unilateral) {
+            BuhatSegmentedControl(
+                options = SIDE_LABELS,
+                selectedIndex = if (side == SetSide.RIGHT) 1 else 0,
+                onSelect = { index ->
+                    val picked = if (index == 0) SetSide.LEFT else SetSide.RIGHT
+                    sideChoice = picked.takeIf { it != autoSide }?.name
+                },
+                selectedColor = MaterialTheme.colorScheme.secondary,
+            )
+            Spacer(Modifier.height(12.dp))
+        }
         SetFields(
             typeIndex = typeIndex,
             onTypeIndexChange = { typeIndex = it },
@@ -833,11 +872,12 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
         SetEditorDialog(
             set = set,
             unit = unit,
+            isUnilateral = unilateral,
             onDismiss = { editing = null },
-            onSave = { type, weightKg, reps, newRir ->
+            onSave = { type, weightKg, reps, newRir, newSide ->
                 scope.launch {
                     try {
-                        repository.updateSet(set.id, type, weightKg, reps, newRir)
+                        repository.updateSet(set.id, type, weightKg, reps, newRir, side = newSide)
                         editing = null
                     } catch (e: SessionValidationException) {
                         error = e.message
@@ -1040,6 +1080,7 @@ private fun SessionPrescriptionDialog(
     initialRepMin: Int,
     initialRepMax: Int,
     initialRir: Int?,
+    isUnilateral: Boolean,
     error: String?,
     onSave: (Int, Int, Int, Int?) -> Unit,
     onDismiss: () -> Unit,
@@ -1061,7 +1102,12 @@ private fun SessionPrescriptionDialog(
                 )
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumberField("Sets", sets, "session-sets", Modifier.weight(1f)) { sets = it }
+                    NumberField(
+                        if (isUnilateral) "Sets/side" else "Sets",
+                        sets,
+                        "session-sets",
+                        Modifier.weight(1f),
+                    ) { sets = it }
                     NumberField("Min", repMin, "session-rep-min", Modifier.weight(1f)) { repMin = it }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1184,11 +1230,13 @@ private fun ExerciseOrderDialog(
 private fun SetEditorDialog(
     set: LoggedSet,
     unit: WeightUnit,
+    isUnilateral: Boolean,
     onDismiss: () -> Unit,
-    onSave: (SetType, Double, Int, Int?) -> Unit,
+    onSave: (SetType, Double, Int, Int?, SetSide?) -> Unit,
     onDelete: () -> Unit,
 ) {
     var typeIndex by remember(set.id) { mutableStateOf(SET_TYPES.indexOf(set.setType)) }
+    var sideIndex by remember(set.id) { mutableStateOf(if (set.side == SetSide.RIGHT) 1 else 0) }
     var weightText by remember(set.id) { mutableStateOf(formatWeightValue(set.weightKg, unit)) }
     var weightKg by remember(set.id) { mutableStateOf<Double?>(set.weightKg) }
     var repsText by remember(set.id) { mutableStateOf(set.reps.toString()) }
@@ -1202,6 +1250,16 @@ private fun SetEditorDialog(
         title = { Text("Edit set") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (isUnilateral) {
+                    BuhatSegmentedControl(
+                        options = SIDE_LABELS,
+                        selectedIndex = sideIndex,
+                        onSelect = { sideIndex = it },
+                        tagPrefix = "edit-side",
+                        selectedColor = MaterialTheme.colorScheme.secondary,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
                 SetFields(
                     typeIndex = typeIndex,
                     onTypeIndexChange = { typeIndex = it },
@@ -1241,7 +1299,17 @@ private fun SetEditorDialog(
                     } else if (reps == null) {
                         error = "Enter reps."
                     } else {
-                        onSave(SET_TYPES[typeIndex], weight, reps, rir)
+                        onSave(
+                            SET_TYPES[typeIndex],
+                            weight,
+                            reps,
+                            rir,
+                            if (isUnilateral) {
+                                if (sideIndex == 0) SetSide.LEFT else SetSide.RIGHT
+                            } else {
+                                set.side
+                            },
+                        )
                     }
                 },
                 modifier = Modifier.testTag("save-set"),
