@@ -2,7 +2,7 @@
 
 ## 1. Status, goal, and success criteria
 
-**Status:** Phases 0-18 are complete except the Phase 14 manual checks 10-13 and the Phase 14 visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22. The previous baseline shipped as `versionCode 3`, `versionName 1.0.1`. Phase 14 automated validation passes, the signed `versionCode 4` / `versionName 1.1.0` build is verified, and it installed over v1.0.1 on SM-S711W with data intact. Baseline recorded on 2026-11-08: 101 unit tests and 181 device tests, 0 failed. Latest recorded on 2026-11-14: 123 unit tests and 238 device tests, 0 failed. Rerun both suites before and after each phase. Phases 19-22 are planned and not started; implementation starts only after this roadmap is approved.
+**Status:** Phases 0-19 are complete except the Phase 14 manual checks 10-13 and the Phase 14 visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22. The previous baseline shipped as `versionCode 3`, `versionName 1.0.1`. Phase 14 automated validation passes, the signed `versionCode 4` / `versionName 1.1.0` build is verified, and it installed over v1.0.1 on SM-S711W with data intact. Baseline recorded on 2026-11-08: 101 unit tests and 181 device tests, 0 failed. Latest recorded on 2026-11-14: 133 unit tests and 254 device tests, 0 failed. Rerun both suites before and after each phase. Phases 20-22 are planned and not started.
 
 **Goal:** A private, offline Android strength log for you and your friends. Each install owns its data. You train from premade or custom templates, log every set with weight, reps, RIR, and type, get per-set double-progression targets, run a rest timer, and review e1RM progress. Any exercise can show and accept its own weight unit and its own working rest, and exercises can be reordered during an active workout. Each exercise can carry a persistent note and a unilateral flag. Exercises can be added, edited, replaced, or removed during a workout, with an optional template save-back at finish. Data moves by JSON export/import, and Strong CSV exports can be imported. Progress can show whole workouts. Delivery is a signed APK.
 
@@ -1193,17 +1193,21 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Outcome:** Left and Right are logged and progressed independently. Each side is one set, rest runs after each side, and history and analytics keep the side.
 
+**Completed:** 2026-11-14. Exercise settings enables unilateral logging. Manual side selection resumes alternation after saving, both sides must finish their prescriptions, and targets/prefill/RIR stay per-side. Progress and Home have independent side charts and statistics. Expanded history retains legacy unsided rows and shows L1/R1/L2 positions for sided working/failure sets. Set editing preserves an untouched null side and allows explicit correction. Archived template rows retain per-side labels. Schema 4 and backup format 3 are unchanged.
+
+**Verification:** `.opencode/skills/e2e-testing/scripts/run-e2e.ps1` passed with 133 unit tests and 254 managed-device tests, 0 failed or skipped. New feature and review regressions were observed failing before their fixes. Mutation checks caught dropped sides, incorrect progression lookup, shared PR keys, missing chart filters, and missing SQL side grouping. Existing backup round-trip and migration suites passed. The first full run hit a Compose layout exception in `SettingsScreenTest.exportAndImportAreDisabledWhileASessionIsActive`; its isolated rerun and the final full run passed.
+
 **Prerequisites:** Phase 16. Phase 17 is independent. Phase 18 is complete; this phase continues in the same screen.
 
 **Work**
 
-- [ ] Add the unilateral switch to Exercise settings.
-- [ ] Add side selection, alternating default, side-aware target and prefill, and L/R labels.
-- [ ] Add per-side progression positions and source filtering.
-- [ ] Add side-aware PR, e1RM, stats, and trend handling.
-- [ ] Add side filters to Progress and Home for unilateral exercises.
-- [ ] Add "per side" prescription labeling.
-- [ ] Add unit and device tests for side selection, rest, analytics, and backup.
+- [x] Add the unilateral switch to Exercise settings.
+- [x] Add side selection, alternating default, side-aware target and prefill, and L/R labels.
+- [x] Add per-side progression positions and source filtering.
+- [x] Add side-aware PR, e1RM, stats, and trend handling.
+- [x] Add side filters to Progress and Home for unilateral exercises.
+- [x] Add "per side" prescription labeling.
+- [x] Add unit and device tests for side selection, rest, analytics, and backup.
 
 **Acceptance checks**
 
@@ -1342,8 +1346,8 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 ### Dependencies and parallel work
 
-- Completed: Phases 0-18, except Phase 14 manual checks 10-13 and the visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22.
-- Remaining critical path: Phase 19 -> 20 -> 21 -> 22. Phase 19 can start now because Phase 18 is complete.
+- Completed: Phases 0-19, except Phase 14 manual checks 10-13 and the visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22.
+- Remaining critical path: Phase 20 -> 21 -> 22. Phase 20 can start now because Phase 19 is complete.
 - Phase 20 depends on notes, sides, and replacement display. Phase 21 depends on the data model and whole-workout history. Phase 22 follows all new phases.
 - Shared contracts to freeze before parallel work: the side-aware domain signatures, the import identity string, and the new dialog and screen test tags. The schema 4 fields, `SetSide`, the note cap, `BACKUP_FORMAT_VERSION = 3`, and the finish prompt states are implemented and frozen.
 
@@ -1413,4 +1417,4 @@ None. Temurin JDK 21 is installed and `JAVA_HOME` points at it.
 
 ### Next step
 
-Complete the pending Phase 14 manual checks 10-13 and the visual pass. Then start Phase 19: add the unilateral switch, side selection and labels, side-aware targets and prefill, per-side progression, and side-aware analytics and backup. Phases 19-22 require this roadmap's approval before implementation.
+Phase 19 is complete. Next implementation phase is Phase 20: whole-workout history, preserving exercise order, replacements, notes, and side labels. The pending Phase 14 manual checks 10-13 and visual pass remain, with physical-phone process-kill and release validation in Phase 22.

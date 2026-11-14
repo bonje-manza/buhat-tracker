@@ -19,6 +19,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -251,6 +252,9 @@ internal fun ExerciseSettingsDialog(
 ) {
     var unitOverride by remember(exercise.id) { mutableStateOf(exercise.weightUnitOverride) }
     var restOverride by remember(exercise.id) { mutableStateOf(exercise.restWorkingSecondsOverride) }
+    var unilateral by key(exercise.id) {
+        rememberSaveable { mutableStateOf(exercise.isUnilateral) }
+    }
     var note by key(exercise.id) {
         rememberSaveable { mutableStateOf(exercise.note.orEmpty()) }
     }
@@ -310,6 +314,18 @@ internal fun ExerciseSettingsDialog(
                     }
                 }
                 Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Unilateral", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    Switch(
+                        checked = unilateral,
+                        onCheckedChange = { unilateral = it },
+                        enabled = !saving,
+                        modifier = Modifier.testTag("pref-unilateral").semantics { contentDescription = "Unilateral" },
+                    )
+                }
+                Text("Track Left and Right separately. Sets are per side.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(16.dp))
                 OutlinedTextField(
                     value = note,
                     onValueChange = {
@@ -340,7 +356,7 @@ internal fun ExerciseSettingsDialog(
                     scope.launch {
                         try {
                             withContext(NonCancellable) {
-                                repository.saveExercisePreferences(exercise.id, unitOverride, restOverride, note, exercise.isUnilateral)
+                                repository.saveExercisePreferences(exercise.id, unitOverride, restOverride, note, unilateral)
                             }
                             onDismiss()
                         } catch (e: CancellationException) {

@@ -181,6 +181,30 @@ class ScreenTest {
     }
 
     @Test
+    fun archivedUnilateralTemplateRowKeepsPerSidePrescription() {
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val exercise = repo.saveExercise(null, "Single leg", "Legs", "Machine")
+            repo.saveExercisePreferences(exercise, null, null, null, true)
+            repo.saveTemplate(null, "Archived sides", listOf(
+                TemplateExerciseDraft(exercise, workingSets = 3, repMin = 6, repMax = 10),
+            ))
+            repo.archiveExercise(exercise)
+        }
+        openWorkouts()
+        compose.onNodeWithTag("segmented-My templates").performClick()
+        awaitTag("template-card-Archived sides")
+        compose.onNodeWithTag("template-menu-Archived sides").performClick()
+        clickMenuItem("Edit template")
+        awaitTag("draft-Single leg")
+        compose.onNodeWithTag("sets-Single leg").assertTextContains("Sets/side")
+        compose.onNodeWithTag("remove-Single leg").performClick()
+        compose.onNodeWithTag("add-exercise").performClick()
+        awaitTag("picker-Bench Press")
+        compose.onNodeWithTag("picker-Single leg").assertDoesNotExist()
+    }
+
+    @Test
     fun existingTemplateEditsSurviveActivityRecreation() {
         openWorkouts()
         compose.onNodeWithTag("segmented-My templates").performClick()

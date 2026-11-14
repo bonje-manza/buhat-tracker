@@ -13,6 +13,7 @@ import com.buhat.tracker.data.local.WorkoutSession
 import com.buhat.tracker.data.local.WorkoutStatus
 import com.buhat.tracker.domain.DAY_MS
 import com.buhat.tracker.domain.SetType
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.e1rm
 import com.buhat.tracker.domain.fourWeekStats
 import com.buhat.tracker.domain.homeAnalyticsNow
@@ -72,6 +73,7 @@ class HomeDashboardTest {
         weightKg: Double,
         reps: Int = 8,
         setType: SetType = SetType.WORKING,
+        side: SetSide? = null,
     ) {
         dao.insertSessions(
             listOf(
@@ -111,12 +113,33 @@ class HomeDashboardTest {
                     reps = reps,
                     rir = 2,
                     completedAt = finishedAt,
+                    side = side,
                 ),
             ),
         )
     }
 
     private fun statements() = synchronized(queries) { queries.map { it.replace(WHITESPACE, " ") } }
+
+    @Test
+    fun sqlSeedsAndWindowPrsStayIndependentForBothSidesAndUnsidedSets() = runTest {
+        val now = 400L * DAY_MS
+        db.withTransaction {
+            insertSession("old-unsided", now - 100 * DAY_MS, EXERCISE_BENCH, 120.0, reps = 6)
+            insertSession("old-left", now - 100 * DAY_MS, EXERCISE_BENCH, 80.0, reps = 6, side = SetSide.LEFT)
+            insertSession("old-right", now - 100 * DAY_MS, EXERCISE_BENCH, 40.0, reps = 6, side = SetSide.RIGHT)
+            insertSession("recent-unsided", now - DAY_MS, EXERCISE_BENCH, 100.0, reps = 6)
+            insertSession("recent-left", now - DAY_MS, EXERCISE_BENCH, 70.0, reps = 6, side = SetSide.LEFT)
+            insertSession("recent-right", now - DAY_MS, EXERCISE_BENCH, 50.0, reps = 6, side = SetSide.RIGHT)
+        }
+        val dashboard = repo.homeDashboard(now).first()
+        // Six reps multiplies each weight by 1.2. Only Right improves on its older best.
+        assertEquals(mapOf(EXERCISE_BENCH to 144.0, "$EXERCISE_BENCH|LEFT" to 96.0, "$EXERCISE_BENCH|RIGHT" to 48.0), dashboard.bestBefore)
+        assertEquals(setOf("set-recent-right"), prSetIds(dashboard.window, dashboard.bestBefore))
+        val stats = fourWeekStats(dashboard.window, now, dashboard.bestBefore)
+        assertEquals(3.0, stats.workingSets.current, 0.0)
+        assertEquals(1320.0, stats.volumeKg.current, 0.0)
+    }
 
     @Test
     fun dashboardKeepsOnlyTheWindowRowsAndStillCountsAllHistoryInSql() = runTest {

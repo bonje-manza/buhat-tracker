@@ -55,6 +55,7 @@ import com.buhat.tracker.domain.BACKUP_SNOOZE_DAYS
 import com.buhat.tracker.domain.DAY_MILLIS
 import com.buhat.tracker.domain.HOME_WINDOW_DAYS
 import com.buhat.tracker.domain.WeightUnit
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.e1rmTrend
 import com.buhat.tracker.domain.effectiveUnit
 import com.buhat.tracker.domain.formatHeight
@@ -65,6 +66,7 @@ import com.buhat.tracker.domain.shouldRemindBackup
 import com.buhat.tracker.ui.BackupController
 import com.buhat.tracker.ui.backupFileName
 import com.buhat.tracker.ui.components.BuhatCard
+import com.buhat.tracker.ui.components.BuhatSegmentedControl
 import com.buhat.tracker.ui.components.BuhatChoiceChip
 import com.buhat.tracker.ui.components.BuhatEmptyState
 import java.text.SimpleDateFormat
@@ -161,8 +163,13 @@ fun HomeScreen(
         val exercise = recent.firstOrNull { it.exerciseId == selectedExercise }
             ?: recent.firstOrNull { it.sets.isNotEmpty() }
             ?: recent.firstOrNull()
-        val exerciseUnit = dashboard.exercises.firstOrNull { it.id == exercise?.exerciseId }
-            ?.effectiveUnit(loaded.unit) ?: loaded.unit
+        val exerciseRow = dashboard.exercises.firstOrNull { it.id == exercise?.exerciseId }
+        val exerciseUnit = exerciseRow?.effectiveUnit(loaded.unit) ?: loaded.unit
+        var sideChoice by rememberSaveable(exercise?.exerciseId) { mutableStateOf<SetSide?>(null) }
+        val latestSide = dashboard.window.flatMap { it.exercises }
+            .filter { it.exerciseId == exercise?.exerciseId }.flatMap { it.sets }
+            .filter { it.side != null }.maxByOrNull { it.completedAt }?.side ?: SetSide.LEFT
+        val side = (sideChoice ?: latestSide).takeIf { exerciseRow?.isUnilateral == true }
         // A session can finish after the collection clock snapshot, so the windows reach just past it.
         val now = homeAnalyticsNow(loaded.now, dashboard.window.maxOfOrNull { it.finishedAt })
         BuhatCard(Modifier.testTag("profile-card").clickable(onClick = onOpenProfile)) {
@@ -289,7 +296,13 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.height(16.dp))
-                StrengthTrend(e1rmTrend(dashboard.window, exercise.exerciseId, HOME_WINDOW_DAYS, now),
+                if (side != null) {
+                    BuhatSegmentedControl(listOf("Left", "Right"), side.ordinal, { sideChoice = SetSide.entries[it] },
+                        selectedColor = MaterialTheme.colorScheme.secondary,
+                        selectedContentColor = MaterialTheme.colorScheme.onSecondary)
+                    Spacer(Modifier.height(12.dp))
+                }
+                StrengthTrend(e1rmTrend(dashboard.window, exercise.exerciseId, HOME_WINDOW_DAYS, now, side),
                     exercise.exerciseNameSnapshot, "3M", exerciseUnit, "home")
             }
         }

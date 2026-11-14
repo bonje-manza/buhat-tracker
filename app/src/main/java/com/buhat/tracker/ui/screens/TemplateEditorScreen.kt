@@ -82,7 +82,7 @@ fun TemplateEditorScreen(
     onBack: () -> Unit,
 ) {
     val isNew = templateId == null || templateId == "new"
-    val library by remember(repository) { repository.exercises() }
+    val library by remember(repository) { repository.allExercises() }
         .collectAsState(emptyList())
     var name by rememberSaveable { mutableStateOf("") }
     var rows by rememberSaveable(stateSaver = DraftRowsSaver) {
@@ -115,7 +115,7 @@ fun TemplateEditorScreen(
 
     if (pickerOpen) {
         ExercisePicker(
-            exercises = library.filter { exercise -> rows.none { it.exerciseId == exercise.id } },
+            exercises = library.filter { exercise -> exercise.archivedAt == null && rows.none { it.exerciseId == exercise.id } },
             query = query,
             onQueryChange = { query = it },
             onPick = { exercise ->

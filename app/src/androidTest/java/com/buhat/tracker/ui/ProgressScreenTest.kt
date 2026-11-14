@@ -10,6 +10,7 @@ import com.buhat.tracker.data.Profile
 import com.buhat.tracker.data.recordBenchWorkout
 import com.buhat.tracker.data.seededId
 import com.buhat.tracker.domain.DAY_MS
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.domain.WeightUnit
@@ -308,6 +309,68 @@ class ProgressScreenTest {
         repairSession()
         compose.onNodeWithTag("home-retry").performClick()
         awaitValue("home-trend-latest", "106.7 kg")
+    }
+
+    @Test fun unilateralProgressShowsOneSideAndHistoryLabels() {
+        val (sessionId, setIds) = runBlocking {
+            val repo = container.repository
+            repo.saveExercisePreferences(benchId, null, null, null, true)
+            val id = repo.startSession(seededId("template", "Push Day A"))
+            val bench = repo.sessionExercises(id).first().first()
+            repo.logSet(bench.id, SetType.WORKING, 40.0, 8, 2, side = SetSide.LEFT)
+            repo.logSet(bench.id, SetType.WORKING, 20.0, 8, 2, side = SetSide.RIGHT)
+            repo.logSet(bench.id, SetType.FAILURE, 30.0, 6, 0, side = SetSide.LEFT)
+            repo.logSet(bench.id, SetType.WARMUP, 10.0, 10, 2, side = SetSide.RIGHT)
+            repo.finishSession(id)
+            id to repo.loggedSets(bench.id).first().map { it.id }
+        }
+        compose.onNodeWithTag("tab-Progress").performClick()
+        awaitTag("progress-exercise-picker")
+        awaitTag("segmented-Right")
+        // The latest set was the right side, so the summary starts there.
+        compose.onNodeWithTag("segmented-Right").assertIsSelected()
+        awaitValue("progress-trend-latest", "25.3 kg")
+        progressItem("progress-best-value").assertTextEquals("25.3 kg")
+        progressItem("progress-heaviest-value").assertTextEquals("20 kg × 8")
+        progressItem("progress-sessions-value").assertTextEquals("1")
+
+        compose.onNodeWithTag("segmented-Left").performScrollTo().performClick()
+        awaitValue("progress-trend-latest", "50.7 kg")
+        progressItem("progress-best-value").assertTextEquals("50.7 kg")
+        progressItem("progress-heaviest-value").assertTextEquals("40 kg × 8")
+
+        progressItem("history-$sessionId").performClick()
+        progressItem("history-set-${setIds[0]}").assertTextContains("L1")
+        progressItem("history-set-${setIds[1]}").assertTextContains("R1")
+        progressItem("history-set-${setIds[2]}").assertTextContains("L2")
+        progressItem("history-set-${setIds[3]}").assertTextContains("R")
+    }
+
+    @Test fun homeTrendUsesTheSelectedSideForUnilateralExercises() {
+        runBlocking {
+            val repo = container.repository
+            repo.saveExercisePreferences(benchId, null, null, null, true)
+            val id = repo.startSession(seededId("template", "Push Day A"))
+            val bench = repo.sessionExercises(id).first().first()
+            repo.logSet(bench.id, SetType.WORKING, 40.0, 8, 2, side = SetSide.LEFT)
+            repo.logSet(bench.id, SetType.WORKING, 20.0, 8, 2, side = SetSide.RIGHT)
+            repo.finishSession(id)
+        }
+        awaitValue("home-trend-latest", "25.3 kg")
+        compose.onNodeWithTag("segmented-Right").performScrollTo().assertIsSelected()
+        compose.onNodeWithTag("segmented-Left").performScrollTo().performClick()
+        awaitValue("home-trend-latest", "50.7 kg")
+        compose.onNodeWithTag("segmented-Right").performScrollTo().performClick()
+        awaitValue("home-trend-latest", "25.3 kg")
+    }
+
+    @Test fun bilateralExercisesHideTheSideControl() {
+        runBlocking { container.recordBenchWorkout() }
+        awaitValue("home-trend-latest", "106.7 kg")
+        compose.onNodeWithTag("segmented-Left").assertDoesNotExist()
+        openProgress()
+        compose.onNodeWithTag("segmented-Left").assertDoesNotExist()
+        compose.onNodeWithTag("segmented-Right").assertDoesNotExist()
     }
 
     @Test fun homeBannerShowsTrainingSinceAndThreeEqualHeightStatCards() {

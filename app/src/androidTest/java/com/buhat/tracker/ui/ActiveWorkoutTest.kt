@@ -968,6 +968,145 @@ class ActiveWorkoutTest {
             .saveExercisePreferences(seededId("exercise", name), null, null, null, true)
     }
 
+    @Test
+    fun unilateralSwitchStartsFreshSidesAndCanReturnToUnsidedHistory() {
+        seedPreviousBenchSession()
+        startPushDayA()
+        awaitTag("target-exercise-settings")
+        compose.onNodeWithTag("target-exercise-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("pref-unilateral").performScrollTo().performClick()
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        awaitTag("segmented-Left")
+        compose.onNodeWithTag("target-value").assertTextEquals("— × 6")
+        compose.onNodeWithTag("weight-input").assertTextEquals("")
+        compose.onNodeWithTag("segmented-Right").performScrollTo().performClick()
+        compose.onNodeWithTag("target-value").assertTextEquals("— × 6")
+        compose.onNodeWithTag("weight-input").assertTextEquals("")
+        compose.activityRule.scenario.recreate()
+        awaitTag("segmented-Right")
+        compose.onNodeWithTag("segmented-Right").assertIsSelected()
+        compose.onNodeWithTag("target-exercise-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("pref-unilateral").performScrollTo().performClick()
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        awaitTagText("target-value", "82.5 kg × 6")
+        compose.onNodeWithTag("segmented-Left").assertDoesNotExist()
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            assertEquals(false, repo.exercise(seededId("exercise", "Bench Press"))!!.isUnilateral)
+            assertEquals(listOf(80.0, 80.0, 80.0), repo.history().first().single().exercises.first().sets.map { it.weightKg })
+        }
+    }
+
+    @Test
+    fun manualSideAlternatesAndSixSetsCompleteBothPrescriptions() {
+        markUnilateral("Bench Press")
+        startPushDayA()
+        awaitTag("segmented-Right")
+        compose.onNodeWithTag("segmented-Right").performScrollTo().performClick()
+        for (index in 1..6) {
+            val side = if (index % 2 == 1) "Right" else "Left"
+            compose.onNodeWithTag("segmented-$side").assertIsSelected()
+            if (index > 2) {
+                compose.onNodeWithTag("weight-input").assertTextEquals(if (side == "Right") "20" else "40")
+                compose.onNodeWithTag("reps-input").assertTextEquals("8")
+            }
+            compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement(if (side == "Right") "20" else "40")
+            compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+            compose.onNodeWithTag("log-set").performScrollTo().performClick()
+            awaitRowText(index, if (side == "Right") "R" else "L")
+            if (index < 6) compose.onNodeWithText("All prescribed sets logged.").assertDoesNotExist()
+        }
+        compose.onNodeWithText("All prescribed sets logged.").assertExists()
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.activeSession().first()!!
+            val bench = repo.sessionExercises(session.id).first().first()
+            val sets = repo.loggedSets(bench.id).first()
+            assertEquals(listOf(SetSide.RIGHT, SetSide.LEFT, SetSide.RIGHT, SetSide.LEFT, SetSide.RIGHT, SetSide.LEFT), sets.map { it.side })
+            assertEquals(listOf(1, 2, 3, 4, 5, 6), sets.map { it.workingIndex })
+        }
+    }
+
+    @Test
+    fun sideTargetsAndPrefillUseIndependentPositions() {
+        markUnilateral("Bench Press")
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.startSession(seededId("template", "Push Day A"))
+            val bench = repo.sessionExercises(session).first().first()
+            repo.logSet(bench.id, SetType.WORKING, 40.0, 8, 2, SetSide.LEFT)
+            repo.logSet(bench.id, SetType.WORKING, 20.0, 7, 1, SetSide.RIGHT)
+            repo.logSet(bench.id, SetType.WORKING, 35.0, 6, 3, SetSide.LEFT)
+            repo.logSet(bench.id, SetType.WORKING, 15.0, 5, 4, SetSide.RIGHT)
+            repo.finishSession(session)
+        }
+        startPushDayA()
+        awaitTagText("target-value", "42.5 kg × 6")
+        compose.onNodeWithTag("weight-input").assertTextEquals("40")
+        compose.onNodeWithTag("rir-2").assertIsSelected()
+        compose.onNodeWithTag("segmented-Right").performScrollTo().performClick()
+        compose.onNodeWithTag("target-value").assertTextEquals("20 kg × 8")
+        compose.onNodeWithTag("weight-input").assertTextEquals("20")
+        compose.onNodeWithTag("reps-input").assertTextEquals("7")
+        compose.onNodeWithTag("rir-1").assertIsSelected()
+        compose.onNodeWithTag("segmented-Left").performClick()
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitRowText(1, "L")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitRowText(2, "R")
+        compose.onNodeWithTag("target-value").assertTextEquals("35 kg × 7")
+        compose.onNodeWithTag("weight-input").assertTextEquals("35")
+        compose.onNodeWithTag("rir-3").assertIsSelected()
+        compose.onNodeWithTag("segmented-Right").performScrollTo().performClick()
+        compose.onNodeWithTag("target-value").assertTextEquals("15 kg × 6")
+        compose.onNodeWithTag("weight-input").assertTextEquals("15")
+        compose.onNodeWithTag("rir-4+").assertIsSelected()
+    }
+
+    @Test
+    fun editingUnsidedSetPreservesSideUnlessExplicitlyChanged() {
+        startPushDayA()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("40")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+        markUnilateral("Bench Press")
+        awaitTag("segmented-Left")
+        compose.onNodeWithTag("set-row-1").performScrollTo().performClick()
+        compose.onNodeWithTag("edit-reps-input").performScrollTo().performTextReplacement("9")
+        compose.onNodeWithTag("save-set").performClick()
+        awaitRowText(1, "40 kg × 9")
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.activeSession().first()!!
+            val bench = repo.sessionExercises(session.id).first().first()
+            assertNull(repo.loggedSets(bench.id).first().single().side)
+        }
+        compose.onNodeWithTag("set-row-1").performScrollTo().performClick()
+        compose.onNodeWithTag("edit-side-Right").performScrollTo().performClick()
+        compose.onNodeWithTag("save-set").performClick()
+        awaitRowText(1, "R")
+    }
+
+    @Test
+    fun changingSideKeepsWarmupAndFailureTypes() {
+        markUnilateral("Bench Press")
+        startPushDayA()
+        awaitTag("segmented-Left")
+        compose.onNodeWithTag("segmented-Warmup").performScrollTo().performClick()
+        compose.onNodeWithTag("segmented-Right").performScrollTo().performClick()
+        compose.onNodeWithTag("segmented-Warmup").assertIsSelected()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("20")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitRowText(1, "R")
+        compose.onNodeWithTag("segmented-Warmup").assertIsSelected()
+        compose.onNodeWithTag("segmented-Left").assertIsSelected()
+        compose.onNodeWithTag("segmented-Failure").performScrollTo().performClick()
+        compose.onNodeWithTag("segmented-Right").performScrollTo().performClick()
+        compose.onNodeWithTag("segmented-Failure").assertIsSelected()
+    }
+
     private fun awaitTagText(tag: String, text: String) {
         compose.waitUntil(5_000) {
             compose.onAllNodes(hasTestTag(tag) and hasText(text)).fetchSemanticsNodes().isNotEmpty()

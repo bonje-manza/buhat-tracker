@@ -47,6 +47,7 @@ import com.buhat.tracker.data.local.Exercise
 import com.buhat.tracker.domain.HistoryExercise
 import com.buhat.tracker.domain.HistorySession
 import com.buhat.tracker.domain.LoggedSetRecord
+import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.TrendPoint
 import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.WindowStat
@@ -58,6 +59,7 @@ import com.buhat.tracker.domain.exerciseStats
 import com.buhat.tracker.domain.formatWeight
 import com.buhat.tracker.domain.kgToLb
 import com.buhat.tracker.domain.prSetIds
+import com.buhat.tracker.domain.numberWorkingSets
 import com.buhat.tracker.domain.rirLabel
 import com.buhat.tracker.ui.components.BuhatCard
 import com.buhat.tracker.ui.components.BuhatEmptyState
@@ -150,11 +152,18 @@ fun ProgressScreen(
     val historyRows = exerciseHistory?.takeIf { it.exerciseId == exerciseId }
     val history = historyRows?.sessions.orEmpty()
     val unit = loaded?.unit ?: WeightUnit.KG
-    val exerciseUnit = loaded?.exercises?.firstOrNull { it.id == exerciseId }?.effectiveUnit(unit) ?: unit
+    val exerciseRow = loaded?.exercises?.firstOrNull { it.id == exerciseId }
+    val exerciseUnit = exerciseRow?.effectiveUnit(unit) ?: unit
+    var sideExerciseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var sideChoice by rememberSaveable { mutableStateOf<SetSide?>(null) }
+    val latestSide = history.flatMap { it.exercises }.flatMap { it.sets }
+        .filter { it.side != null }.maxByOrNull { it.completedAt }?.side ?: SetSide.LEFT
+    val side = (sideChoice.takeIf { sideExerciseId == exerciseId } ?: latestSide)
+        .takeIf { exerciseRow?.isUnilateral == true }
     val ranges = listOf("1M", "3M", "1Y", "All")
     val rangeDays = listOf(30, 90, 365, null)[rangeIndex]
     val now = System.currentTimeMillis()
-    val summary = remember(history, exerciseId) { exerciseStats(history, exerciseId) }
+    val summary = remember(history, exerciseId, side) { exerciseStats(history, exerciseId, side) }
     // The loaded rows only hold the selected exercise, so these set ids are its all-time PRs.
     val prs = remember(history) { prSetIds(history) }
     val workouts = remember(history, exerciseId) {
@@ -186,8 +195,16 @@ fun ProgressScreen(
             }
             item {
                 BuhatCard {
+                    if (side != null) {
+                        BuhatSegmentedControl(listOf("Left", "Right"), side.ordinal, {
+                            sideExerciseId = exerciseId
+                            sideChoice = SetSide.entries[it]
+                        }, selectedColor = MaterialTheme.colorScheme.secondary,
+                            selectedContentColor = MaterialTheme.colorScheme.onSecondary)
+                        Spacer(Modifier.height(12.dp))
+                    }
                     Text("Estimated 1RM", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    StrengthTrend(e1rmTrend(history, exerciseId, rangeDays, now), selected?.second.orEmpty(), ranges[rangeIndex], exerciseUnit, "progress") {
+                    StrengthTrend(e1rmTrend(history, exerciseId, rangeDays, now, side), selected?.second.orEmpty(), ranges[rangeIndex], exerciseUnit, "progress") {
                         BuhatSegmentedControl(ranges, rangeIndex, onSelectRange,
                             selectedColor = MaterialTheme.colorScheme.secondary,
                             selectedContentColor = MaterialTheme.colorScheme.onSecondary)
@@ -209,9 +226,10 @@ fun ProgressScreen(
                 item { BuhatEmptyState("No workouts for this exercise", "Log it in a finished workout.", Modifier.testTag("progress-empty")) }
             }
             items(workouts, key = { it.id }) { workout ->
-                val exercise = workout.exercises.first { it.exerciseId == exerciseId }
+                val occurrences = workout.exercises.filter { it.exerciseId == exerciseId }
+                val exercise = occurrences.first().copy(sets = occurrences.flatMap { it.sets })
                 val expanded = expandedId == workout.id
-                WorkoutHistoryCard(workout, exercise, exerciseUnit, prs, expanded,
+                WorkoutHistoryCard(workout, exercise, exerciseUnit, prs, side, expanded,
                     onToggle = { expandedId = if (expanded) null else workout.id },
                     onDelete = { pendingDeleteId = workout.id; deleteError = null })
             }
@@ -284,11 +302,12 @@ private fun WorkoutHistoryCard(
     exercise: HistoryExercise,
     unit: WeightUnit,
     prs: Set<String>,
+    side: SetSide?,
     expanded: Boolean,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val working = exercise.sets.filter { it.setType.countsForProgression }
+    val working = exercise.sets.filter { it.setType.countsForProgression && it.side == side }
     val best = working.filter { e1rm(it.weightKg, it.reps) != null }.maxByOrNull { e1rm(it.weightKg, it.reps)!! }
         ?: working.maxWithOrNull(compareBy<LoggedSetRecord> { it.weightKg }.thenBy { it.reps })
     BuhatCard {
@@ -297,9 +316,10 @@ private fun WorkoutHistoryCard(
             .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
             .testTag("history-${workout.id}")) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(best?.let { "${formatWeight(it.weightKg, unit)} × ${it.reps}" } ?: "Warmup sets only",
+                Text(best?.let { "${formatWeight(it.weightKg, unit)} × ${it.reps}" }
+                    ?: if (exercise.sets.any { it.side == side }) "Warmup sets only" else "No sets for this side",
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                if (exercise.sets.any { it.id in prs }) PrBadge(Modifier.testTag("history-pr-${workout.id}"))
+                if (exercise.sets.any { it.side == side && it.id in prs }) PrBadge(Modifier.testTag("history-pr-${workout.id}"))
             }
             Text("${workoutDate(workout.finishedAt)} · ${workout.templateNameSnapshot}", color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium)
@@ -308,10 +328,15 @@ private fun WorkoutHistoryCard(
         }
         if (expanded) {
             Spacer(Modifier.height(8.dp))
+            val positions = remember(exercise.sets) {
+                SetSide.entries.flatMap { numberWorkingSets(exercise.sets, it) }
+                    .associate { it.set.id to it.position }
+            }
             exercise.sets.forEach { set ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp).semantics(mergeDescendants = true) {}
                     .testTag("history-set-${set.id}"), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    set.side?.let { Text("${if (it == SetSide.LEFT) "L" else "R"}${positions[set.id] ?: ""}") }
                     SetTypeBadge(set.setType)
                     Column(Modifier.weight(1f)) {
                         Text("${formatWeight(set.weightKg, unit)} × ${set.reps}")
