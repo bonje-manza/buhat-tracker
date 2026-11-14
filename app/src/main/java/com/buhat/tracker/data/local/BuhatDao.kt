@@ -283,14 +283,14 @@ interface BuhatDao {
 
     @Query(
         """
-        SELECT se.exerciseId AS exerciseId,
+        SELECT se.exerciseId AS exerciseId, ls.side AS side,
                MAX(ls.weightKg * (1.0 + ls.reps / 30.0)) AS bestE1rm
         FROM LoggedSet ls
         JOIN SessionExercise se ON se.id = ls.sessionExerciseId
         JOIN WorkoutSession s ON s.id = se.sessionId
         WHERE s.status = 'FINISHED' AND s.finishedAt < :cutoffMillis
           AND ls.setType != 'WARMUP' AND ls.weightKg > 0 AND ls.reps > 0
-        GROUP BY se.exerciseId
+        GROUP BY se.exerciseId, ls.side
         """,
     )
     fun observeBestE1rmBefore(cutoffMillis: Long): Flow<List<ExerciseBestE1rm>>
@@ -412,6 +412,7 @@ data class HistorySetRow(
 
 data class ExerciseBestE1rm(
     val exerciseId: String,
+    val side: SetSide?,
     val bestE1rm: Double,
 )
 

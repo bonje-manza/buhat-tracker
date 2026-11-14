@@ -18,6 +18,7 @@ class AnalyticsTest {
         reps: Int,
         type: SetType = SetType.WORKING,
         at: Long = 0L,
+        side: SetSide? = null,
     ) = LoggedSetRecord(
         id = id,
         setType = type,
@@ -26,6 +27,7 @@ class AnalyticsTest {
         reps = reps,
         rir = 2,
         completedAt = at,
+        side = side,
     )
 
     private fun session(
@@ -278,6 +280,90 @@ class AnalyticsTest {
 
         assertEquals(emptySet<String>(), prSetIds(tie, seed))
         assertEquals(setOf("above-set"), prSetIds(above, seed))
+    }
+
+    @Test
+    fun prsCompareWithinTheSameExerciseAndSide() {
+        val history = listOf(
+            session(
+                "first", NOW - DAY,
+                "bench" to listOf(
+                    set("left-1", 100.0, 5, at = 1, side = SetSide.LEFT),
+                    set("right-1", 50.0, 5, at = 2, side = SetSide.RIGHT),
+                ),
+            ),
+            session(
+                "second", NOW,
+                "bench" to listOf(
+                    set("left-2", 90.0, 5, at = 3, side = SetSide.LEFT),
+                    set("right-2", 60.0, 5, at = 4, side = SetSide.RIGHT),
+                ),
+            ),
+        )
+
+        assertEquals(setOf("left-1", "right-1", "right-2"), prSetIds(history))
+        assertEquals(setOf("left-1"), prSetIds(history, SetSide.LEFT))
+        assertEquals(setOf("right-1", "right-2"), prSetIds(history, SetSide.RIGHT))
+        assertEquals(4.0, fourWeekStats(history, NOW).workingSets.current, 0.0)
+    }
+
+    @Test
+    fun sideFilteredStatsAndTrendUseOnlyThatSide() {
+        val history = listOf(
+            session(
+                "both", 1L * DAY,
+                "bench" to listOf(
+                    set("left", 100.0, 5, at = 1, side = SetSide.LEFT),
+                    set("right", 60.0, 5, at = 2, side = SetSide.RIGHT),
+                ),
+            ),
+            session("left-only", 2L * DAY, "bench" to listOf(set("left-2", 90.0, 5, at = 3, side = SetSide.LEFT))),
+        )
+
+        val right = exerciseStats(history, "bench", SetSide.RIGHT)
+        val left = exerciseStats(history, "bench", SetSide.LEFT)
+        val rightTrend = e1rmTrend(history, "bench", null, NOW, SetSide.RIGHT)
+
+        assertEquals(e1rm(60.0, 5)!!, right.bestE1rm!!, 0.0001)
+        assertEquals("right", right.heaviestSet!!.id)
+        assertEquals(1, right.sessionCount)
+        assertEquals(e1rm(100.0, 5)!!, left.bestE1rm!!, 0.0001)
+        assertEquals(2, left.sessionCount)
+        assertEquals(listOf(e1rm(60.0, 5)!!), rightTrend.map { it.e1rm })
+    }
+
+    @Test
+    fun bilateralStatsIgnoreSideSets() {
+        val history = listOf(
+            session(
+                "mixed", 1L * DAY,
+                "bench" to listOf(
+                    set("unsided", 80.0, 5, at = 1),
+                    set("left", 100.0, 5, at = 2, side = SetSide.LEFT),
+                ),
+            ),
+        )
+
+        val stats = exerciseStats(history, "bench")
+
+        assertEquals(e1rm(80.0, 5)!!, stats.bestE1rm!!, 0.0001)
+        assertEquals("unsided", stats.heaviestSet!!.id)
+    }
+
+    @Test
+    fun seededPrMapUsesTheSideKey() {
+        val history = listOf(
+            session(
+                "session", NOW,
+                "bench" to listOf(
+                    set("left", 90.0, 5, at = 1, side = SetSide.LEFT),
+                    set("right", 60.0, 5, at = 2, side = SetSide.RIGHT),
+                ),
+            ),
+        )
+        val seed = mapOf(sideKey("bench", SetSide.LEFT) to e1rm(100.0, 5)!!)
+
+        assertEquals(setOf("right"), prSetIds(history, seed))
     }
 
     @Test

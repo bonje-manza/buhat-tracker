@@ -30,6 +30,7 @@ import com.buhat.tracker.domain.priorWindowStart
 import com.buhat.tracker.domain.renumberWorkingSets
 import com.buhat.tracker.domain.restEndsAt
 import com.buhat.tracker.domain.restSecondsFor
+import com.buhat.tracker.domain.sideKey
 import com.buhat.tracker.domain.validateExerciseName
 import com.buhat.tracker.domain.validatePrescription
 import com.buhat.tracker.domain.validateSet
@@ -459,7 +460,7 @@ class BuhatRepository(
             profileStats = stats,
             latest = latest?.toHistorySession(),
             window = rows.toHistorySessions(),
-            bestBefore = best.associate { it.exerciseId to it.bestE1rm },
+            bestBefore = best.associate { sideKey(it.exerciseId, it.side) to it.bestE1rm },
             exercises = exercises,
         )
     }.flowOn(Dispatchers.Default)

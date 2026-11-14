@@ -25,22 +25,40 @@ fun e1rm(weightKg: Double, reps: Int): Double? {
     return weightKg * (1.0 + reps / 30.0)
 }
 
-fun prSetIds(history: List<HistorySession>, bestBefore: Map<String, Double> = emptyMap()): Set<String> {
+fun sideKey(exerciseId: String, side: SetSide?): String =
+    if (side == null) exerciseId else "$exerciseId|${side.name}"
+
+fun prSetIds(history: List<HistorySession>, bestBefore: Map<String, Double> = emptyMap()): Set<String> =
+    collectPrSetIds(history, bestBefore, sideFilter = null, filterSide = false)
+
+fun prSetIds(
+    history: List<HistorySession>,
+    side: SetSide?,
+    bestBefore: Map<String, Double> = emptyMap(),
+): Set<String> = collectPrSetIds(history, bestBefore, sideFilter = side, filterSide = true)
+
+private fun collectPrSetIds(
+    history: List<HistorySession>,
+    bestBefore: Map<String, Double>,
+    sideFilter: SetSide?,
+    filterSide: Boolean,
+): Set<String> {
     val bestByExercise = HashMap<String, Double>(bestBefore)
     val prs = HashSet<String>()
     history.sortedBy { it.finishedAt }.forEach { session ->
         session.exercises.forEach { exercise ->
             exercise.sets
-                .filter { it.setType.countsForProgression }
+                .filter { it.setType.countsForProgression && (!filterSide || it.side == sideFilter) }
                 .sortedBy { it.completedAt }
                 .forEach { set ->
                     val estimated = e1rm(set.weightKg, set.reps) ?: return@forEach
-                    val best = bestByExercise[exercise.exerciseId]
+                    val key = sideKey(exercise.exerciseId, set.side)
+                    val best = bestByExercise[key]
                     if (best != null && estimated <= best) {
-                        bestByExercise[exercise.exerciseId] = maxOf(best, estimated)
+                        bestByExercise[key] = maxOf(best, estimated)
                         return@forEach
                     }
-                    bestByExercise[exercise.exerciseId] = estimated
+                    bestByExercise[key] = estimated
                     prs.add(set.id)
                 }
         }
@@ -128,10 +146,10 @@ data class ExerciseStats(
     val sessionCount: Int,
 )
 
-fun exerciseStats(history: List<HistorySession>, exerciseId: String): ExerciseStats {
+fun exerciseStats(history: List<HistorySession>, exerciseId: String, side: SetSide? = null): ExerciseStats {
     val sessionSets = history.map { session ->
         session.exercises.filter { it.exerciseId == exerciseId }
-            .flatMap { it.sets }.filter { it.setType.countsForProgression }
+            .flatMap { it.sets }.filter { it.setType.countsForProgression && it.side == side }
     }
     val sets = sessionSets.flatten()
     return ExerciseStats(
@@ -146,6 +164,7 @@ fun e1rmTrend(
     exerciseId: String,
     rangeDays: Int?,
     nowMillis: Long,
+    side: SetSide? = null,
 ): List<TrendPoint> {
     val cutoff = nowMillis - (rangeDays ?: 0) * DAY_MS
     return history
@@ -153,12 +172,14 @@ fun e1rmTrend(
         .sortedBy { it.finishedAt }
         .mapNotNull { session ->
             val best = session.exercises
-                .firstOrNull { it.exerciseId == exerciseId }
-                ?.sets
-                ?.filter { it.setType.countsForProgression }
-                ?.mapNotNull { e1rm(it.weightKg, it.reps) }
-                ?.maxOrNull()
+                .filter { it.exerciseId == exerciseId }
+                .flatMap { it.sets }
+                .filter { it.setType.countsForProgression && it.side == side }
+                .mapNotNull { e1rm(it.weightKg, it.reps) }
+                .maxOrNull()
                 ?: return@mapNotNull null
             TrendPoint(session.finishedAt, best)
         }
 }
+
+
