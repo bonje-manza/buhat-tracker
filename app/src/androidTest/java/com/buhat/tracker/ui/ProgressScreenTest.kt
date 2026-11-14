@@ -127,7 +127,7 @@ class ProgressScreenTest {
 
     @Test fun benchProgressAndHomeTrendUseTheExerciseUnitWhileVolumeStaysGlobal() {
         val sessionId = runBlocking {
-            container.repository.saveExercisePreferences(benchId, "LB", null)
+            container.repository.saveExercisePreferences(benchId, "LB", null, null, false)
             container.recordBenchWorkout()
         }
         // 80 kg × 2.20462 = 176.3696 → 176.4 lb. e1RM 106.6667 kg → 235.2 lb. Volume stays global.
@@ -240,7 +240,7 @@ class ProgressScreenTest {
             val session = repo.startSession(template)
             repo.logSet(repo.sessionExercises(session).first().first().id, SetType.WORKING, 0.0, 10, 2)
             repo.finishSession(session)
-            repo.saveExercisePreferences(exercise, "LB", null)
+            repo.saveExercisePreferences(exercise, "LB", null, null, false)
             repo.archiveExercise(exercise)
             repo.deleteTemplate(template)
             exercise

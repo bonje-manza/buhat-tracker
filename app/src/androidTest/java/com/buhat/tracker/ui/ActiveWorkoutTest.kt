@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -98,6 +100,20 @@ class ActiveWorkoutTest {
     private fun awaitText(text: String) {
         compose.waitUntil(5_000) {
             compose.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun awaitPrescription(name: String, workingSets: Int, repMin: Int, repMax: Int) {
+        compose.waitUntil(5_000) {
+            runBlocking {
+                val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+                val session = repo.activeSession().first() ?: return@runBlocking false
+                val row = repo.sessionExercises(session.id).first().singleOrNull {
+                    it.exerciseNameSnapshot == name
+                }
+                row != null && row.workingSets == workingSets &&
+                    row.repMin == repMin && row.repMax == repMax
+            }
         }
     }
 
@@ -248,7 +264,7 @@ class ActiveWorkoutTest {
     fun lbExerciseLogsAndTargetsInPounds() {
         runBlocking {
             val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
-            repo.saveExercisePreferences(seededId("exercise", "Bench Press"), "LB", null)
+            repo.saveExercisePreferences(seededId("exercise", "Bench Press"), "LB", null, null, false)
             val session = repo.startSession(seededId("template", "Push Day A"))
             val bench = repo.sessionExercises(session).first().first()
             repo.logSet(bench.id, SetType.WORKING, weightKg = lbToKg(135.0), reps = 10, rir = 2)
@@ -282,8 +298,8 @@ class ActiveWorkoutTest {
     fun eachExerciseUsesItsOwnUnitInTheSameWorkout() {
         runBlocking {
             val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
-            repo.saveExercisePreferences(seededId("exercise", "Bench Press"), "LB", null)
-            repo.saveExercisePreferences(seededId("exercise", "Leg Extension"), "KG", null)
+            repo.saveExercisePreferences(seededId("exercise", "Bench Press"), "LB", null, null, false)
+            repo.saveExercisePreferences(seededId("exercise", "Leg Extension"), "KG", null, null, false)
             val template = repo.saveTemplate(
                 id = null,
                 name = "Mixed units day",
@@ -376,6 +392,136 @@ class ActiveWorkoutTest {
     }
 
     @Test
+    fun exerciseNoteEditsPersistIntoNextWorkoutAndClearWithoutChangingHistory() {
+        val container = ApplicationProvider.getApplicationContext<BuhatApplication>().container
+        runBlocking {
+            container.repository.saveExercisePreferences(seededId("exercise", "Bench Press"), null, null, null, true)
+        }
+        startPushDayA()
+        compose.onNodeWithTag("exercise-note").assertDoesNotExist()
+        compose.onNodeWithTag("target-exercise-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("pref-note").performScrollTo().performTextReplacement("Keep elbows tucked")
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        awaitText("Keep elbows tucked")
+        compose.onNodeWithTag("exercise-note").performScrollTo().assertTextEquals("Keep elbows tucked")
+        assertTrue(runBlocking { container.repository.exercise(seededId("exercise", "Bench Press"))!!.isUnilateral })
+
+        compose.onNodeWithTag("target-exercise-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("pref-note").assertTextContains("Keep elbows tucked")
+        compose.onNodeWithTag("pref-note").performScrollTo().performTextReplacement("Unsaved draft")
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithTag("exercise-note").assertTextEquals("Keep elbows tucked")
+
+        compose.activityRule.scenario.recreate()
+        awaitTag("exercise-note")
+        compose.onNodeWithTag("exercise-note").assertTextEquals("Keep elbows tucked")
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("active-empty")
+        startPushDayA()
+        awaitTag("exercise-note")
+        compose.onNodeWithTag("exercise-note").assertTextEquals("Keep elbows tucked")
+        compose.onNodeWithTag("target-exercise-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("pref-note").performScrollTo().performTextReplacement(" \n\t")
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("exercise-settings")).fetchSemanticsNodes().isEmpty()
+        }
+        compose.onNodeWithTag("exercise-note").assertDoesNotExist()
+        runBlocking {
+            assertNull(container.repository.exercise(seededId("exercise", "Bench Press"))!!.note)
+            assertTrue(container.repository.exercise(seededId("exercise", "Bench Press"))!!.isUnilateral)
+            assertNull(container.repository.history().first().single().exercises.first().note)
+            assertEquals(false, container.repository.activeSession().first()!!.structureDirty)
+        }
+    }
+
+    @Test
+    fun exerciseNoteLimitRejectsOverlongDraftWithoutTruncating() {
+        startPushDayA()
+        awaitTag("target-exercise-settings")
+        compose.onNodeWithTag("target-exercise-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("pref-note").performScrollTo().performTextReplacement("n".repeat(2000))
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        awaitTag("exercise-note")
+        compose.onNodeWithTag("exercise-note").assertTextEquals("n".repeat(2000))
+        compose.onNodeWithTag("target-exercise-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("pref-note").performScrollTo().performTextReplacement("n".repeat(2001))
+        compose.onNodeWithTag("save-exercise-prefs").assertIsNotEnabled()
+        compose.onNodeWithTag("pref-note").assertTextContains("n".repeat(2001))
+        compose.onNodeWithText("Note must be 2000 characters or fewer.").assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals("n".repeat(2000), runBlocking {
+            ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+                .exercise(seededId("exercise", "Bench Press"))!!.note
+        })
+    }
+
+    @Test
+    fun failedExerciseNoteSaveKeepsDraftAndCanRetry() {
+        startPushDayA()
+        val database = ApplicationProvider.getApplicationContext<BuhatApplication>().container.database
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER fail_note BEFORE UPDATE ON Exercise BEGIN SELECT RAISE(ABORT, 'disk write failed'); END",
+        )
+        compose.onNodeWithTag("target-exercise-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("pref-note").performScrollTo().performTextReplacement("Keep elbows tucked")
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        awaitText("Could not save exercise settings. Try again.")
+        compose.onNodeWithTag("pref-note").assertTextContains("Keep elbows tucked")
+        assertNull(runBlocking { database.dao().exerciseById(seededId("exercise", "Bench Press"))!!.note })
+        database.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_note")
+        compose.onNodeWithTag("save-exercise-prefs").performClick()
+        awaitTag("exercise-note")
+        compose.onNodeWithTag("exercise-note").assertTextEquals("Keep elbows tucked")
+    }
+
+    @Test
+    fun selectingExerciseHidesPreviousNoteWhileItsDatabaseReadIsPending() {
+        val container = ApplicationProvider.getApplicationContext<BuhatApplication>().container
+        runBlocking {
+            container.repository.saveExercisePreferences(
+                seededId("exercise", "Bench Press"), null, null, "Keep elbows tucked", false,
+            )
+            container.repository.saveExercisePreferences(
+                seededId("exercise", "Incline Dumbbell Press"), null, null, "Pause at the bottom", false,
+            )
+        }
+        startPushDayA()
+        awaitTag("exercise-note")
+        compose.onNodeWithTag("exercise-note").assertTextEquals("Keep elbows tucked")
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        // Hold the real in-memory SQLite connection so the next exercise query cannot finish.
+        val blocker = Thread {
+            runBlocking {
+                container.database.withTransaction {
+                    container.database.dao().deleteSetById("transaction-blocker")
+                    entered.countDown()
+                    release.await(20, TimeUnit.SECONDS)
+                }
+            }
+        }.apply { start() }
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            compose.onNodeWithTag("exercise-chip-Incline Dumbbell Press").performScrollTo().performClick()
+            compose.onNodeWithTag("exercise-chip-Incline Dumbbell Press").assertIsSelected()
+            compose.onNodeWithTag("exercise-note").assertDoesNotExist()
+            compose.onNodeWithTag("target-exercise-settings").assertDoesNotExist()
+        } finally {
+            release.countDown()
+            blocker.join(5_000)
+        }
+        awaitText("Pause at the bottom")
+        compose.onNodeWithTag("exercise-note").assertTextEquals("Pause at the bottom")
+        compose.onNodeWithTag("target-exercise-settings").assertExists()
+    }
+
+    @Test
     fun reorderKeepsSelectionSetsAndRestThroughRecreationAndFinish() {
         val container = ApplicationProvider.getApplicationContext<BuhatApplication>().container
         runBlocking { container.settingsStore.update { it.copy(restWorkingSeconds = 600) } }
@@ -417,6 +563,8 @@ class ActiveWorkoutTest {
 
         compose.onNodeWithTag("active-menu").performScrollTo().performClick()
         compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("finish-prompt")
+        compose.onNodeWithTag("finish-this-workout-only").performClick()
         awaitTag("active-empty")
         runBlocking {
             val history = container.repository.history().first().single()
@@ -543,6 +691,235 @@ class ActiveWorkoutTest {
             compose.onNodeWithTag("exercise-chip-$it").getUnclippedBoundsInRoot().left
         }
         assertTrue(lefts[0] < lefts[1] && lefts[1] < lefts[2])
+    }
+
+    @Test
+    fun addExerciseMidWorkoutPersistsAndPromptsOnFinish() {
+        startPushDayA()
+
+        compose.onNodeWithTag("active-menu").performClick()
+        compose.onNodeWithTag("add-session-exercise").performClick()
+        awaitTag("session-picker-search")
+        compose.onNodeWithTag("session-picker-search").performTextReplacement("cable row")
+        compose.onNodeWithTag("session-picker-Seated Cable Row").performClick()
+        awaitTag("session-sets")
+        compose.onNodeWithTag("session-sets").performTextReplacement("4")
+        compose.onNodeWithTag("session-rep-min").performTextReplacement("6")
+        compose.onNodeWithTag("session-rep-max").performTextReplacement("8")
+        compose.onNodeWithTag("session-rir").performTextReplacement("1")
+        compose.onNodeWithTag("save-session-exercise").performClick()
+
+        awaitTag("exercise-chip-Seated Cable Row")
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.activeSession().first()!!
+            val added = repo.sessionExercises(session.id).first()
+                .single { it.exerciseNameSnapshot == "Seated Cable Row" }
+            assertEquals(
+                listOf(4, 4, 6, 8, 1),
+                listOf(added.position, added.workingSets, added.repMin, added.repMax, added.targetRir),
+            )
+            assertTrue(session.structureDirty)
+        }
+
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("finish-prompt")
+    }
+
+    @Test
+    fun editExerciseUpdatesTheTargetRangeAndThisWorkoutOnlyLeavesTheTemplate() {
+        startPushDayA()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+
+        compose.onNodeWithTag("edit-session-exercise").performScrollTo().performClick()
+        awaitTag("session-sets")
+        compose.onNodeWithTag("session-sets").performTextReplacement("4")
+        compose.onNodeWithTag("session-rep-min").performTextReplacement("8")
+        compose.onNodeWithTag("session-rep-max").performTextReplacement("10")
+        compose.onNodeWithTag("save-session-exercise").performClick()
+        awaitPrescription("Bench Press", 4, 8, 10)
+        compose.onNodeWithText("Target today · 8–10 rep range").assertExists()
+
+        val sessionId = runBlocking {
+            ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+                .activeSession().first()!!.id
+        }
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("finish-prompt")
+        compose.onNodeWithTag("finish-this-workout-only").performClick()
+        awaitTag("active-empty")
+
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val bench = repo.sessionExercises(sessionId).first().first()
+            assertEquals(listOf(4, 8, 10), listOf(bench.workingSets, bench.repMin, bench.repMax))
+            val templateBench = repo.loadTemplateDraft(seededId("template", "Push Day A"))!!.exercises.first()
+            assertEquals(listOf(3, 6, 8), listOf(templateBench.workingSets, templateBench.repMin, templateBench.repMax))
+        }
+    }
+
+    @Test
+    fun replaceAfterSetsKeepsEarlierSetsAndSelectsTheReplacement() {
+        startPushDayA()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("7")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-2")
+
+        compose.onNodeWithTag("replace-session-exercise").performScrollTo().performClick()
+        awaitTag("session-picker-search")
+        compose.onNodeWithTag("session-picker-Seated Cable Row").performScrollTo().performClick()
+        awaitTag("exercise-chip-Seated Cable Row")
+        compose.onNodeWithTag("exercise-chip-Seated Cable Row").assertIsSelected()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("85")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("6")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("85")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("5")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-2")
+
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("finish-prompt")
+        compose.onNodeWithTag("finish-this-workout-only").performClick()
+        awaitTag("active-empty")
+
+        runBlocking {
+            val history = ApplicationProvider.getApplicationContext<BuhatApplication>()
+                .container.repository.history().first().single()
+            assertEquals(
+                listOf("Bench Press", "Seated Cable Row", "Incline Dumbbell Press", "Cable Fly"),
+                history.exercises.map { it.exerciseNameSnapshot },
+            )
+            assertEquals(listOf(80.0, 80.0), history.exercises[0].sets.map { it.weightKg })
+            assertEquals(listOf(85.0, 85.0), history.exercises[1].sets.map { it.weightKg })
+        }
+    }
+
+    @Test
+    fun unloggedExerciseCanBeRemovedAndALoggedOneCannot() {
+        startPushDayA()
+        compose.onNodeWithTag("exercise-chip-Incline Dumbbell Press").performScrollTo().performClick()
+        compose.onNodeWithTag("remove-session-exercise").performScrollTo().performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("exercise-chip-Incline Dumbbell Press"))
+                .fetchSemanticsNodes().isEmpty()
+        }
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val session = repo.activeSession().first()!!
+            val rows = repo.sessionExercises(session.id).first()
+            assertEquals(listOf("Bench Press", "Cable Fly"), rows.map { it.exerciseNameSnapshot })
+            assertEquals(listOf(1, 2), rows.map { it.position })
+        }
+
+        compose.onNodeWithTag("exercise-chip-Bench Press").performScrollTo().performClick()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+        compose.onNodeWithTag("remove-session-exercise").performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun finishWithUpdateTemplateCreatesACustomCopyOfThePremade() {
+        startPushDayA()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+        compose.onNodeWithTag("edit-session-exercise").performScrollTo().performClick()
+        awaitTag("session-sets")
+        compose.onNodeWithTag("session-sets").performTextReplacement("4")
+        compose.onNodeWithTag("save-session-exercise").performClick()
+        awaitPrescription("Bench Press", 4, 6, 8)
+
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("finish-prompt")
+        compose.onNodeWithTag("finish-update-template").performClick()
+        awaitTag("active-empty")
+
+        runBlocking {
+            val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+            val premade = repo.loadTemplateDraft(seededId("template", "Push Day A"))!!
+            assertEquals(3, premade.exercises.first().workingSets)
+            val copy = repo.templates().first().single { it.name == "Push Day A (copy)" }
+            assertEquals(false, copy.isPremade)
+            assertEquals(4, repo.loadTemplateDraft(copy.id)!!.exercises.first().workingSets)
+        }
+    }
+
+    @Test
+    fun failedTemplateSaveBackShowsTheErrorAndKeepsTheWorkoutActive() {
+        startPushDayA()
+        val container = ApplicationProvider.getApplicationContext<BuhatApplication>().container
+        runBlocking {
+            val session = container.repository.activeSession().first()!!
+            val bench = container.repository.sessionExercises(session.id).first().first()
+            container.repository.editSessionExercise(bench.id, workingSets = 4, repMin = 6, repMax = 8, targetRir = null)
+            container.repository.logSet(bench.id, SetType.WORKING, 80.0, 8, 2)
+        }
+        container.database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER fail_finish_template BEFORE INSERT ON TemplateExercise " +
+                "BEGIN SELECT RAISE(ABORT, 'disk write failed'); END",
+        )
+
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("finish-prompt")
+        compose.onNodeWithTag("finish-update-template").performClick()
+        awaitTag("finish-error")
+        runBlocking {
+            val session = container.repository.activeSession().first()!!
+            assertTrue(session.structureDirty)
+            assertNull(container.repository.templates().first().singleOrNull { it.name == "Push Day A (copy)" })
+        }
+
+        container.database.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_finish_template")
+        compose.onNodeWithTag("finish-update-template").performClick()
+        awaitTag("active-empty")
+        runBlocking {
+            assertNull(container.repository.activeSession().first())
+            assertNotNull(container.repository.templates().first().singleOrNull { it.name == "Push Day A (copy)" })
+        }
+    }
+
+    @Test
+    fun finishFailureWithoutAStructureChangeShowsTheErrorAndKeepsTheWorkoutActive() {
+        startPushDayA()
+        compose.onNodeWithTag("weight-input").performScrollTo().performTextReplacement("80")
+        compose.onNodeWithTag("reps-input").performScrollTo().performTextReplacement("8")
+        compose.onNodeWithTag("log-set").performScrollTo().performClick()
+        awaitTag("set-row-1")
+        val container = ApplicationProvider.getApplicationContext<BuhatApplication>().container
+        container.database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER fail_finish_session BEFORE UPDATE ON WorkoutSession " +
+                "BEGIN SELECT RAISE(ABORT, 'disk write failed'); END",
+        )
+
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("finish-error")
+        runBlocking {
+            assertNotNull(container.repository.activeSession().first())
+        }
+
+        container.database.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_finish_session")
+        compose.onNodeWithTag("active-menu").performScrollTo().performClick()
+        compose.onNodeWithText("Finish workout").performClick()
+        awaitTag("active-empty")
     }
 
     @Test

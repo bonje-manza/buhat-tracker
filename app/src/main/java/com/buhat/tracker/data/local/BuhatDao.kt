@@ -92,9 +92,12 @@ interface BuhatDao {
     suspend fun updateExercise(exercise: Exercise)
 
     @Query(
-        "UPDATE Exercise SET weightUnitOverride = :unit, restWorkingSecondsOverride = :rest WHERE id = :id",
+        """
+        UPDATE Exercise SET weightUnitOverride = :unit, restWorkingSecondsOverride = :rest,
+            note = :note, isUnilateral = :isUnilateral WHERE id = :id
+        """,
     )
-    suspend fun updateExercisePreferences(id: String, unit: String?, rest: Int?): Int
+    suspend fun updateExercisePreferences(id: String, unit: String?, rest: Int?, note: String?, isUnilateral: Boolean): Int
 
     @Update
     suspend fun updateTemplate(template: Template)
@@ -177,6 +180,18 @@ interface BuhatDao {
 
     @Query("SELECT * FROM SessionExercise WHERE id = :id")
     suspend fun sessionExerciseById(id: String): SessionExercise?
+
+    @Update
+    suspend fun updateSessionExercise(exercise: SessionExercise)
+
+    @Query("DELETE FROM SessionExercise WHERE id = :id")
+    suspend fun deleteSessionExerciseById(id: String)
+
+    @Query("UPDATE SessionExercise SET replacesSessionExerciseId = NULL WHERE replacesSessionExerciseId = :id")
+    suspend fun clearReplacementLinks(id: String)
+
+    @Query("UPDATE WorkoutSession SET structureDirty = 1 WHERE id = :id")
+    suspend fun markSessionStructureDirty(id: String)
 
     @Query(
         """

@@ -24,6 +24,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,6 +41,7 @@ import com.buhat.tracker.data.SeedContent
 import com.buhat.tracker.data.Settings
 import com.buhat.tracker.data.local.Exercise
 import com.buhat.tracker.domain.ContentValidationException
+import com.buhat.tracker.domain.MAX_NOTE_LENGTH
 import com.buhat.tracker.domain.REST_SECONDS_MAX
 import com.buhat.tracker.domain.formatRestSeconds
 import com.buhat.tracker.ui.components.BuhatChoiceChip
@@ -48,7 +50,10 @@ import com.buhat.tracker.ui.components.BuhatPill
 import com.buhat.tracker.ui.components.BuhatScreen
 import com.buhat.tracker.ui.components.BuhatSegmentedControl
 import com.buhat.tracker.ui.components.BuhatStepper
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ExerciseLibraryScreen(
@@ -246,6 +251,10 @@ internal fun ExerciseSettingsDialog(
 ) {
     var unitOverride by remember(exercise.id) { mutableStateOf(exercise.weightUnitOverride) }
     var restOverride by remember(exercise.id) { mutableStateOf(exercise.restWorkingSecondsOverride) }
+    var note by key(exercise.id) {
+        rememberSaveable { mutableStateOf(exercise.note.orEmpty()) }
+    }
+    var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val unitIndex = when (unitOverride) {
@@ -254,20 +263,21 @@ internal fun ExerciseSettingsDialog(
         else -> 0
     }
     val restSeconds = restOverride ?: settings.restWorkingSeconds
+    val noteTooLong = note.length > MAX_NOTE_LENGTH
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving) onDismiss() },
         modifier = Modifier.testTag("exercise-settings"),
         title = { Text("Exercise settings") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text("Weight unit", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 BuhatSegmentedControl(
                     options = listOf("Default", "kg", "lb"),
                     selectedIndex = unitIndex,
                     onSelect = { index ->
-                        unitOverride = when (index) {
+                        if (!saving) unitOverride = when (index) {
                             1 -> "KG"
                             2 -> "LB"
                             else -> null
@@ -283,7 +293,7 @@ internal fun ExerciseSettingsDialog(
                 Text("Working rest", style = MaterialTheme.typography.titleMedium)
                 BuhatStepper(
                     value = restSeconds.toDouble(),
-                    onValueChange = { restOverride = it.toInt() },
+                    onValueChange = { if (!saving) restOverride = it.toInt() },
                     step = settings.restIncrementSeconds.toDouble(),
                     min = 0.0,
                     max = REST_SECONDS_MAX.toDouble(),
@@ -293,11 +303,29 @@ internal fun ExerciseSettingsDialog(
                 if (restOverride != null) {
                     TextButton(
                         onClick = { restOverride = null },
+                        enabled = !saving,
                         modifier = Modifier.testTag("pref-rest-default"),
                     ) {
                         Text("Use default (${formatRestSeconds(settings.restWorkingSeconds)})")
                     }
                 }
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = {
+                        note = it
+                        error = null
+                    },
+                    label = { Text("Exercise note") },
+                    minLines = 3,
+                    maxLines = 5,
+                    enabled = !saving,
+                    isError = noteTooLong,
+                    supportingText = {
+                        Text(if (noteTooLong) "Note must be $MAX_NOTE_LENGTH characters or fewer." else "${note.length}/$MAX_NOTE_LENGTH")
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("pref-note"),
+                )
                 error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error)
                 }
@@ -305,23 +333,35 @@ internal fun ExerciseSettingsDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = {
+                onClick = save@{
+                    if (saving || noteTooLong) return@save
+                    saving = true
+                    error = null
                     scope.launch {
                         try {
-                            repository.saveExercisePreferences(exercise.id, unitOverride, restOverride)
+                            withContext(NonCancellable) {
+                                repository.saveExercisePreferences(exercise.id, unitOverride, restOverride, note, exercise.isUnilateral)
+                            }
                             onDismiss()
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: ContentValidationException) {
                             error = e.message
+                        } catch (_: Exception) {
+                            error = "Could not save exercise settings. Try again."
+                        } finally {
+                            saving = false
                         }
                     }
                 },
+                enabled = !saving && !noteTooLong,
                 modifier = Modifier.testTag("save-exercise-prefs"),
             ) {
-                Text("Save")
+                Text(if (saving) "Saving..." else "Save")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss, enabled = !saving) { Text("Cancel") }
         },
     )
 }

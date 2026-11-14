@@ -256,7 +256,7 @@ class BackupRepositoryTest {
     @Test
     fun exerciseOverridesSurviveExportAndImport() = runTest {
         val bench = seededId("exercise", "Bench Press")
-        repo.saveExercisePreferences(bench, "LB", 180)
+        repo.saveExercisePreferences(bench, "LB", 180, "Keep elbows tucked", true)
 
         val exported = repo.exportBackup()
         val empty = decodeBackup(exported).copy(
@@ -274,6 +274,8 @@ class BackupRepositoryTest {
         val restored = repo.exercise(bench)!!
         assertEquals("LB", restored.weightUnitOverride)
         assertEquals(180, restored.restWorkingSecondsOverride)
+        assertEquals("Keep elbows tucked", restored.note)
+        assertTrue(restored.isUnilateral)
     }
 
     @Test

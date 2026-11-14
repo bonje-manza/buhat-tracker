@@ -267,7 +267,7 @@ private fun DraftRowCard(
 }
 
 @Composable
-private fun NumberField(
+internal fun NumberField(
     label: String,
     value: String,
     tag: String,

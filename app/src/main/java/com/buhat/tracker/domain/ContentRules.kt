@@ -29,6 +29,15 @@ fun validateExerciseName(name: String, takenNames: Collection<String>): String? 
     return null
 }
 
+/** Returns the first user-facing problem with one exercise prescription, or null. */
+fun validatePrescription(workingSets: Int, repMin: Int, repMax: Int, targetRir: Int?): String? {
+    if (workingSets !in 1..10) return "Sets must be 1 to 10."
+    if (repMin !in 1..30 || repMax !in 1..30) return "Reps must be 1 to 30."
+    if (repMin > repMax) return "Minimum reps cannot exceed maximum reps."
+    if (targetRir != null && targetRir !in 0..5) return "RIR must be 0 to 5."
+    return null
+}
+
 /** Returns the first user-facing problem, or null when the template can be saved. */
 fun validateTemplate(
     name: String,
@@ -41,10 +50,8 @@ fun validateTemplate(
         return "Each exercise can appear once."
     }
     exercises.forEach { exercise ->
-        if (exercise.workingSets !in 1..10) return "Sets must be 1 to 10."
-        if (exercise.repMin !in 1..30 || exercise.repMax !in 1..30) return "Reps must be 1 to 30."
-        if (exercise.repMin > exercise.repMax) return "Minimum reps cannot exceed maximum reps."
-        if (exercise.targetRir != null && exercise.targetRir !in 0..5) return "RIR must be 0 to 5."
+        validatePrescription(exercise.workingSets, exercise.repMin, exercise.repMax, exercise.targetRir)
+            ?.let { return it }
     }
     return null
 }

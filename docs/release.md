@@ -1,4 +1,4 @@
-# Buhat 1.0.0 release
+# Buhat release
 
 ## Signing and building
 
@@ -18,7 +18,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-release.ps1 -
 
 This runs signing-failure checks and builds/verifies the optimized APK. Output: `app/build/outputs/apk/release/app-release.apk`. Build/check logs: `app/build/release-check/`. The terminal prints the APK hash and signer certificate fingerprint. The verifier compares the APK signer against the approved fingerprint recorded below, so a wrong or stale keystore fails.
 
-The distribution version is versionCode **3**, versionName **1.0.1**. Share the APK only after the acceptance checks below pass.
+The distribution version is versionCode **4**, versionName **1.1.0**. Share the APK only after the acceptance checks below pass.
 
 ## Backups and updates
 
@@ -67,3 +67,13 @@ Automated checks below last passed on 2026-11-06: unit 74 tests, device 124 test
 - 2026-11-06 visual pass fixes, each red before the change and green after: Home shows the design's `Est. 1RM` label in the strength trend header (`ProgressScreenTest#homeStrengthCardCarriesTheDesignEstimatedOneRepMaxLabel`), Settings uses the design's units example copy (`SettingsScreenTest#unitsCardUsesTheDesignExampleCopy`), template exercise-picker rows meet the 48dp touch target (`ScreenTest#exercisePickerRowsMeetThe48dpTouchTarget`), and the Active logging card shows the design's RIR helper line (`ActiveWorkoutTest#loggingCardCarriesTheDesignRirHint`).
 - 2026-11-06 versionCode 2 distribution: the release is versionCode 2 / versionName 1.0.0 for the install-over-previous check. `scripts/verify-release.ps1` now accepts AGP 8.13's `optimizeReleaseResources` task and pins versionCode 2. `RESULT: PASS`, APK SHA-256 `1784681FFBEAFF5DC815AACD99A6C4DB359B9813A0B72136A968629950D3F29D`.
 - 2026-11-07 versionCode 3 / versionName 1.0.1 build: `scripts/verify-release.ps1` all nine signing-failure cases pass with their expected reasons, signer matches `0AE9F79BB9726BABB4EF39C926483721CC2AE49ECA633CABFE5F3574B9F51BAC`, R8 and resource shrinking ran, `aapt` reports versionCode 3 / versionName 1.0.1 / minSdk 26 / targetSdk 35 / non-debuggable, packaged permissions are POST_NOTIFICATIONS, VIBRATE, USE_EXACT_ALARM, and SCHEDULE_EXACT_ALARM (maxSdk 32) with no INTERNET. `RESULT: PASS`, APK SHA-256 `5A7815B3135ACECBE28EE5E8DE8E5A82A62E1D0163C9BD25834311CF319CAE63`. Not yet installed on SM-S711W; the release-install and acceptance checks are still pending for this versionCode.
+
+### 1.1.0 results
+
+- 2026-11-10 E2E runner: unit 113 tests / 0 failed, device 205 tests / 0 failed, INTERNET permission absent, `RESULT: PASS`.
+- 2026-11-10 `ScreenTest#deletingReferencedExerciseOffersArchive` raced the asynchronous template-use query; the test now waits for the "Used in a template" title. No product change.
+- 2026-11-10 `scripts/verify-release.ps1`: all nine signing-failure cases pass, signer matches `0AE9F79BB9726BABB4EF39C926483721CC2AE49ECA633CABFE5F3574B9F51BAC`, R8 and resource shrinking ran, `aapt` reports versionCode 4 / versionName 1.1.0 / minSdk 26 / targetSdk 35 / non-debuggable, and the packaged manifest has no INTERNET permission. `RESULT: PASS`, APK SHA-256 `D7256C1860722010259F0DEC9F4C3FB998454EC3D07201C0010DC7F47CFDF55F`.
+- 2026-11-10 release-signed install over the v1.0.1 release on the API 35 emulator: same-key update succeeded, the update prompt appeared once, and 1 workout / 3 working sets / 800 lb volume / the lb preference survived.
+- 2026-11-10 format-1 backup import on the v1.1.0 release build: `Imported 1 exercises, 1 templates, 1 workouts, 3 sets`, with the profile and lb setting restored.
+- 2026-11-10 release-signed install on SM-S711W over v1.0.1: `Success`, versionCode 4 / versionName 1.1.0. The profile (`Bonje`, 127.9 lb), 1 finished workout, the active Push Day A session, and the lb preference survived; the update prompt appeared once.
+- Pending on SM-S711W: manual checks 10-13 and the visual pass.

@@ -87,7 +87,7 @@ try {
     $badging = & (Join-Path $tools 'aapt.exe') dump badging $apk
     Require ($LASTEXITCODE -eq 0) 'Could not inspect APK metadata'
     $metadata = $badging | Out-String
-    Require ($metadata -match "package: name='com.buhat.tracker' versionCode='3' versionName='1.0.1'") 'Wrong package or release version'
+    Require ($metadata -match "package: name='com.buhat.tracker' versionCode='4' versionName='1.1.0'") 'Wrong package or release version'
     Require ($metadata -match "sdkVersion:'26'") 'Wrong minimum SDK'
     Require ($metadata -match "targetSdkVersion:'35'") 'Wrong target SDK'
     Require ($metadata -notmatch 'application-debuggable') 'Release is debuggable'

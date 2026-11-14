@@ -14,11 +14,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -238,8 +240,10 @@ class ContentRepositoryTest {
         val bench = premadeExercise("Bench Press")
         val customId = repo.saveExercise(null, "Belt Squat", "Quads", "Machine")
 
-        repo.saveExercisePreferences(bench.id, "LB", 180)
-        repo.saveExercisePreferences(customId, null, 0)
+        repo.saveExercisePreferences(bench.id, "LB", 180, "Keep elbows tucked", true)
+        repo.saveExercisePreferences(customId, null, 0, "Pause at the bottom\n控制", false)
+
+        repo = BuhatRepository(db, repo.settingsStore, repo.profileStore)
 
         val benchAfter = repo.exercise(bench.id)!!
         assertEquals("Bench Press", benchAfter.name)
@@ -247,10 +251,44 @@ class ContentRepositoryTest {
         assertEquals("Barbell", benchAfter.equipment)
         assertEquals("LB", benchAfter.weightUnitOverride)
         assertEquals(180, benchAfter.restWorkingSecondsOverride)
+        assertEquals("Keep elbows tucked", benchAfter.note)
+        assertTrue(benchAfter.isUnilateral)
+        assertEquals(bench.copy(weightUnitOverride = "LB", restWorkingSecondsOverride = 180,
+            note = "Keep elbows tucked", isUnilateral = true), benchAfter)
 
         val customAfter = repo.exercise(customId)!!
         assertNull(customAfter.weightUnitOverride)
         assertEquals(0, customAfter.restWorkingSecondsOverride)
+        assertEquals("Pause at the bottom\n控制", customAfter.note)
+        assertFalse(customAfter.isUnilateral)
+    }
+
+    @Test
+    fun exerciseNoteLimitRejectsOverflowBeforeChangingAnyPreferences() = runTest {
+        val bench = premadeExercise("Bench Press")
+        repo.saveExercisePreferences(bench.id, "LB", 180, "n".repeat(2000), true)
+        assertEquals("n".repeat(2000), repo.exercise(bench.id)!!.note)
+        val before = repo.exercise(bench.id)
+
+        val error = assertThrows(ContentValidationException::class.java) {
+            runBlocking { repo.saveExercisePreferences(bench.id, "KG", 0, "n".repeat(2001), false) }
+        }
+        assertEquals("Note must be 2000 characters or fewer.", error.message)
+        assertEquals(before, repo.exercise(bench.id))
+    }
+
+    @Test
+    fun blankExerciseNotesClearWithoutSnapshottingOrDirtyingTheSession() = runTest {
+        val bench = premadeExercise("Bench Press")
+        val session = repo.startSession(seededId("template", "Push Day A"))
+        for (blank in listOf(null, "", " \n\t")) {
+            db.dao().updateExercise(bench.copy(note = "Keep elbows tucked", isUnilateral = true))
+            repo.saveExercisePreferences(bench.id, "LB", 180, blank, true)
+            assertNull(repo.exercise(bench.id)!!.note)
+            assertTrue(repo.exercise(bench.id)!!.isUnilateral)
+        }
+        assertNull(repo.sessionExercises(session).first().first().note)
+        assertFalse(repo.activeSession().first()!!.structureDirty)
     }
 
     @Test
@@ -259,7 +297,7 @@ class ContentRepositoryTest {
 
         suspend fun errorFor(unit: String?, rest: Int?): String? =
             try {
-                repo.saveExercisePreferences(bench.id, unit, rest)
+                repo.saveExercisePreferences(bench.id, unit, rest, null, false)
                 null
             } catch (e: ContentValidationException) {
                 e.message
@@ -270,6 +308,10 @@ class ContentRepositoryTest {
         assertEquals("Rest must be 0 to 600 seconds.", errorFor(null, 601))
         assertNull(repo.exercise(bench.id)!!.weightUnitOverride)
         assertNull(repo.exercise(bench.id)!!.restWorkingSecondsOverride)
+        val missing = assertThrows(ContentValidationException::class.java) {
+            runBlocking { repo.saveExercisePreferences(UUID.randomUUID().toString(), null, null, "Note", false) }
+        }
+        assertEquals("Exercise not found.", missing.message)
     }
 
     @Test

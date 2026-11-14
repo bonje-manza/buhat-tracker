@@ -2,6 +2,7 @@ package com.buhat.tracker.data
 
 import androidx.room.withTransaction
 import com.buhat.tracker.BuildConfig
+import com.buhat.tracker.data.local.BuhatDao
 import com.buhat.tracker.data.local.BuhatDatabase
 import com.buhat.tracker.data.local.Exercise
 import com.buhat.tracker.data.local.FinishedWorkout
@@ -18,6 +19,7 @@ import com.buhat.tracker.domain.ContentValidationException
 import com.buhat.tracker.domain.HistoryExercise
 import com.buhat.tracker.domain.HistorySession
 import com.buhat.tracker.domain.LoggedSetRecord
+import com.buhat.tracker.domain.MAX_NOTE_LENGTH
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.domain.WeightUnit
@@ -29,6 +31,7 @@ import com.buhat.tracker.domain.renumberWorkingSets
 import com.buhat.tracker.domain.restEndsAt
 import com.buhat.tracker.domain.restSecondsFor
 import com.buhat.tracker.domain.validateExerciseName
+import com.buhat.tracker.domain.validatePrescription
 import com.buhat.tracker.domain.validateSet
 import com.buhat.tracker.domain.validateTemplate
 import java.util.UUID
@@ -179,6 +182,8 @@ class BuhatRepository(
         exerciseId: String,
         unitOverride: String?,
         restWorkingSecondsOverride: Int?,
+        note: String?,
+        isUnilateral: Boolean,
     ) {
         if (unitOverride != null && WeightUnit.entries.none { it.name == unitOverride }) {
             throw ContentValidationException("Unit must be KG or LB.")
@@ -186,7 +191,12 @@ class BuhatRepository(
         if (restWorkingSecondsOverride != null && restWorkingSecondsOverride !in 0..600) {
             throw ContentValidationException("Rest must be 0 to 600 seconds.")
         }
-        if (database.dao().updateExercisePreferences(exerciseId, unitOverride, restWorkingSecondsOverride) == 0) {
+        if (note != null && note.length > MAX_NOTE_LENGTH) {
+            throw ContentValidationException("Note must be $MAX_NOTE_LENGTH characters or fewer.")
+        }
+        if (database.dao().updateExercisePreferences(
+                exerciseId, unitOverride, restWorkingSecondsOverride, note?.takeUnless { it.isBlank() }, isUnilateral,
+            ) == 0) {
             throw ContentValidationException("Exercise not found.")
         }
     }
@@ -264,16 +274,9 @@ class BuhatRepository(
     suspend fun duplicateTemplate(id: String): String {
         val dao = database.dao()
         val source = dao.templateById(id) ?: throw ContentValidationException("Template not found.")
-        val taken = dao.templateNamesExcept("").toSet()
-        var candidate = "${source.name} (copy)"
-        var copyNumber = 2
-        while (candidate.lowercase() in taken) {
-            candidate = "${source.name} (copy $copyNumber)"
-            copyNumber++
-        }
         return saveTemplate(
             id = null,
-            name = candidate,
+            name = uniqueCopyName(dao, source.name),
             exercises = dao.templateExercisesFor(id).map {
                 TemplateExerciseDraft(
                     exerciseId = it.exerciseId,
@@ -313,6 +316,123 @@ class BuhatRepository(
             // Negative positions avoid collisions with the unique (sessionId, position) index.
             dao.negateSessionExercisePositions(sessionId)
             orderedIds.forEachIndexed { index, id -> dao.updateSessionExercisePosition(id, index + 1) }
+            dao.markSessionStructureDirty(sessionId)
+        }
+    }
+
+    suspend fun addSessionExercise(
+        sessionId: String,
+        exerciseId: String,
+        workingSets: Int,
+        repMin: Int,
+        repMax: Int,
+        targetRir: Int?,
+    ): String = sessionWriteMutex.withLock {
+        database.withTransaction {
+            val dao = database.dao()
+            requireActiveSession(dao, sessionId)
+            validatePrescription(workingSets, repMin, repMax, targetRir)
+                ?.let { throw SessionValidationException(it) }
+            val rows = dao.sessionExercisesFor(sessionId)
+            if (rows.any { it.exerciseId == exerciseId }) {
+                throw SessionValidationException("That exercise is already in the workout.")
+            }
+            val exercise = dao.exerciseById(exerciseId)
+                ?: throw SessionValidationException("Exercise not found.")
+            val id = UUID.randomUUID().toString()
+            dao.insertSessionExercises(
+                listOf(
+                    SessionExercise(
+                        id = id,
+                        sessionId = sessionId,
+                        exerciseId = exerciseId,
+                        exerciseNameSnapshot = exercise.name,
+                        position = (rows.maxOfOrNull { it.position } ?: 0) + 1,
+                        workingSets = workingSets,
+                        repMin = repMin,
+                        repMax = repMax,
+                        targetRir = targetRir,
+                    ),
+                ),
+            )
+            dao.markSessionStructureDirty(sessionId)
+            id
+        }
+    }
+
+    suspend fun editSessionExercise(
+        sessionExerciseId: String,
+        workingSets: Int,
+        repMin: Int,
+        repMax: Int,
+        targetRir: Int?,
+    ) = sessionWriteMutex.withLock {
+        database.withTransaction {
+            val dao = database.dao()
+            val row = requireActiveSessionExercise(dao, sessionExerciseId)
+            validatePrescription(workingSets, repMin, repMax, targetRir)
+                ?.let { throw SessionValidationException(it) }
+            dao.updateSessionExercise(
+                row.copy(workingSets = workingSets, repMin = repMin, repMax = repMax, targetRir = targetRir),
+            )
+            dao.markSessionStructureDirty(row.sessionId)
+        }
+    }
+
+    suspend fun replaceSessionExercise(sessionExerciseId: String, exerciseId: String): String =
+        sessionWriteMutex.withLock {
+            database.withTransaction {
+                val dao = database.dao()
+                val row = requireActiveSessionExercise(dao, sessionExerciseId)
+                val rows = dao.sessionExercisesFor(row.sessionId)
+                if (rows.any { it.id != row.id && it.exerciseId == exerciseId }) {
+                    throw SessionValidationException("That exercise is already in the workout.")
+                }
+                val exercise = dao.exerciseById(exerciseId)
+                    ?: throw SessionValidationException("Exercise not found.")
+                if (dao.selectSetsFor(row.id).isEmpty()) {
+                    dao.updateSessionExercise(
+                        row.copy(exerciseId = exerciseId, exerciseNameSnapshot = exercise.name),
+                    )
+                    dao.markSessionStructureDirty(row.sessionId)
+                    return@withTransaction row.id
+                }
+                val replacement = SessionExercise(
+                    id = UUID.randomUUID().toString(),
+                    sessionId = row.sessionId,
+                    exerciseId = exerciseId,
+                    exerciseNameSnapshot = exercise.name,
+                    // Rewritten with the rest of the order below.
+                    position = 0,
+                    workingSets = row.workingSets,
+                    repMin = row.repMin,
+                    repMax = row.repMax,
+                    targetRir = row.targetRir,
+                    replacesSessionExerciseId = row.id,
+                )
+                val index = rows.indexOfFirst { it.id == row.id }
+                val order = rows.toMutableList().apply { add(index + 1, replacement) }
+                dao.negateSessionExercisePositions(row.sessionId)
+                dao.insertSessionExercises(listOf(replacement))
+                order.forEachIndexed { position, item -> dao.updateSessionExercisePosition(item.id, position + 1) }
+                dao.markSessionStructureDirty(row.sessionId)
+                replacement.id
+            }
+        }
+
+    suspend fun removeSessionExercise(sessionExerciseId: String) = sessionWriteMutex.withLock {
+        database.withTransaction {
+            val dao = database.dao()
+            val row = requireActiveSessionExercise(dao, sessionExerciseId)
+            if (dao.selectSetsFor(row.id).isNotEmpty()) {
+                throw SessionValidationException("An exercise with logged sets cannot be removed.")
+            }
+            dao.clearReplacementLinks(row.id)
+            dao.deleteSessionExerciseById(row.id)
+            val remaining = dao.sessionExercisesFor(row.sessionId)
+            dao.negateSessionExercisePositions(row.sessionId)
+            remaining.forEachIndexed { index, item -> dao.updateSessionExercisePosition(item.id, index + 1) }
+            dao.markSessionStructureDirty(row.sessionId)
         }
     }
 
@@ -490,13 +610,40 @@ class BuhatRepository(
         }
     }
 
-    suspend fun finishSession(sessionId: String) = sessionWriteMutex.withLock {
+    suspend fun finishSession(sessionId: String, updateTemplate: Boolean = false) = sessionWriteMutex.withLock {
         val dao = database.dao()
         val session = dao.sessionById(sessionId) ?: return@withLock
-        if (dao.workingSetCount(sessionId) == 0) throw NoWorkingSetsException()
-        dao.updateSession(
-            session.copy(status = WorkoutStatus.FINISHED, finishedAt = System.currentTimeMillis()),
-        )
+        if (session.status != WorkoutStatus.ACTIVE) return@withLock
+        database.withTransaction {
+            if (dao.workingSetCount(sessionId) == 0) throw NoWorkingSetsException()
+            if (updateTemplate) {
+                val rows = dao.sessionExercisesFor(sessionId)
+                val replacedIds = rows.mapNotNull { it.replacesSessionExerciseId }.toSet()
+                val drafts = rows.filterNot { it.id in replacedIds }.map {
+                    TemplateExerciseDraft(
+                        exerciseId = it.exerciseId,
+                        exerciseName = it.exerciseNameSnapshot,
+                        workingSets = it.workingSets,
+                        repMin = it.repMin,
+                        repMax = it.repMax,
+                        targetRir = it.targetRir,
+                    )
+                }
+                val target = dao.templateById(session.templateIdSnapshot)
+                when {
+                    target == null -> saveTemplate(null, availableTemplateName(dao, session.templateNameSnapshot), drafts)
+                    target.isPremade -> saveTemplate(null, uniqueCopyName(dao, target.name), drafts)
+                    else -> saveTemplate(target.id, target.name, drafts)
+                }
+            }
+            dao.updateSession(
+                session.copy(
+                    status = WorkoutStatus.FINISHED,
+                    finishedAt = System.currentTimeMillis(),
+                    structureDirty = false,
+                ),
+            )
+        }
         settingsStore.setRestEndsAt(null)
     }
 
@@ -505,7 +652,33 @@ class BuhatRepository(
         settingsStore.setRestEndsAt(null)
     }
 
-    private suspend fun renumberPositions(dao: com.buhat.tracker.data.local.BuhatDao, sessionExerciseId: String) {
+    private suspend fun availableTemplateName(dao: BuhatDao, name: String): String =
+        if (name.lowercase() in dao.templateNamesExcept("")) uniqueCopyName(dao, name) else name
+
+    private suspend fun uniqueCopyName(dao: BuhatDao, name: String): String {
+        val taken = dao.templateNamesExcept("").toSet()
+        var candidate = "$name (copy)"
+        var copyNumber = 2
+        while (candidate.lowercase() in taken) {
+            candidate = "$name (copy $copyNumber)"
+            copyNumber++
+        }
+        return candidate
+    }
+
+    private suspend fun requireActiveSession(dao: BuhatDao, sessionId: String): WorkoutSession {
+        val session = dao.sessionById(sessionId) ?: throw SessionValidationException("Workout not found.")
+        if (session.status != WorkoutStatus.ACTIVE) throw SessionValidationException("Workout is not active.")
+        return session
+    }
+
+    private suspend fun requireActiveSessionExercise(dao: BuhatDao, id: String): SessionExercise {
+        val row = dao.sessionExerciseById(id) ?: throw SessionValidationException("Exercise not found.")
+        requireActiveSession(dao, row.sessionId)
+        return row
+    }
+
+    private suspend fun renumberPositions(dao: BuhatDao, sessionExerciseId: String) {
         // Clear first so the unique (sessionExerciseId, workingIndex) index never collides mid-update.
         dao.clearWorkingIndices(sessionExerciseId)
         renumberWorkingSets(dao.selectSetsFor(sessionExerciseId).map { it.toRecord() })

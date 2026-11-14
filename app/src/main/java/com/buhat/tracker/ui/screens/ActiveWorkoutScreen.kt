@@ -29,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,6 +66,7 @@ import com.buhat.tracker.data.BuhatRepository
 import com.buhat.tracker.data.NoWorkingSetsException
 import com.buhat.tracker.data.SessionValidationException
 import com.buhat.tracker.data.Settings
+import com.buhat.tracker.data.local.Exercise
 import com.buhat.tracker.data.local.LoggedSet
 import com.buhat.tracker.data.local.SessionExercise
 import com.buhat.tracker.data.local.WorkoutSession
@@ -140,6 +142,7 @@ fun ActiveWorkoutScreen(repository: BuhatRepository, restTimer: RestTimer, onSta
 private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, session: WorkoutSession) {
     val exercises by remember(session.id) { repository.sessionExercises(session.id) }
         .collectAsState(emptyList())
+    val library by remember(repository) { repository.exercises() }.collectAsState(emptyList())
     var selectedId by rememberSaveable(session.id) { mutableStateOf<String?>(null) }
     val selected = exercises.firstOrNull { it.id == selectedId } ?: exercises.firstOrNull()
     val settingsResult by remember(repository) { repository.settingsStore.settings }
@@ -148,9 +151,10 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
     val restEndsAt = settingsResult?.restEndsAt
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
-    val exerciseRow by remember(selected?.exerciseId) {
+    val observedExercise by remember(selected?.exerciseId) {
         selected?.let { repository.observeExercise(it.exerciseId) } ?: flowOf(null)
     }.collectAsState(null)
+    val exerciseRow = observedExercise?.takeIf { it.id == selected?.exerciseId }
 
     val sets by remember(selected?.id) {
         selected?.let { repository.loggedSets(it.id) } ?: flowOf(emptyList())
@@ -162,6 +166,15 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
 
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var elapsedNow by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    var pickerOpen by remember { mutableStateOf(false) }
+    var pickerReplacing by remember { mutableStateOf(false) }
+    var pickerQuery by remember { mutableStateOf("") }
+    var pendingAdd by remember { mutableStateOf<Exercise?>(null) }
+    var editOpen by remember { mutableStateOf(false) }
+    var dialogError by remember { mutableStateOf<String?>(null) }
+    var structureError by remember { mutableStateOf<String?>(null) }
+    var finishPromptOpen by remember { mutableStateOf(false) }
+    var finishError by remember { mutableStateOf<String?>(null) }
     var alarmAccessAsked by rememberSaveable(session.id) { mutableStateOf(false) }
     var alarmAccessDenied by remember { mutableStateOf(false) }
     var permissionDenied by remember { mutableStateOf(false) }
@@ -330,6 +343,43 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
         }
     }
 
+    fun finish(updateTemplate: Boolean) {
+        finishError = null
+        scope.launch {
+            try {
+                withContext(NonCancellable) {
+                    repository.finishSession(session.id, updateTemplate)
+                    restTimer.cancel()
+                }
+                finishPromptOpen = false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: NoWorkingSetsException) {
+                finishPromptOpen = false
+                discardPrompt = DiscardPrompt(
+                    "No working sets yet.",
+                    "A workout needs at least one working set. Discard it instead?",
+                )
+            } catch (e: Exception) {
+                finishError = e.message ?: "Could not finish the workout."
+            }
+        }
+    }
+
+    fun removeSelectedExercise() {
+        val row = selected ?: return
+        structureError = null
+        scope.launch {
+            try {
+                withContext(NonCancellable) { repository.removeSessionExercise(row.id) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                structureError = e.message ?: "Could not remove the exercise."
+            }
+        }
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(
@@ -376,18 +426,11 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                     text = { Text("Finish workout") },
                     onClick = {
                         menuOpen = false
-                        scope.launch {
-                            try {
-                                withContext(NonCancellable) {
-                                    repository.finishSession(session.id)
-                                    restTimer.cancel()
-                                }
-                            } catch (e: NoWorkingSetsException) {
-                                discardPrompt = DiscardPrompt(
-                                    "No working sets yet.",
-                                    "A workout needs at least one working set. Discard it instead?",
-                                )
-                            }
+                        if (session.structureDirty) {
+                            finishError = null
+                            finishPromptOpen = true
+                        } else {
+                            finish(updateTemplate = false)
                         }
                     },
                 )
@@ -396,6 +439,16 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                     onClick = {
                         menuOpen = false
                         discardPrompt = DiscardPrompt("Discard workout?", "The logged sets will be deleted.")
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Add exercise") },
+                    modifier = Modifier.testTag("add-session-exercise"),
+                    onClick = {
+                        menuOpen = false
+                        pickerReplacing = false
+                        pickerQuery = ""
+                        pickerOpen = true
                     },
                 )
                 DropdownMenuItem(
@@ -409,6 +462,16 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                     },
                 )
             }
+        }
+    }
+    if (!finishPromptOpen) {
+        finishError?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("finish-error"),
+            )
         }
     }
     Spacer(Modifier.height(16.dp))
@@ -433,6 +496,107 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
 
     if (orderOpen) {
         ExerciseOrderDialog(repository, session.id, exercises) { orderOpen = false }
+    }
+
+    if (pickerOpen) {
+        SessionExercisePickerDialog(
+            exercises = library.filter { candidate -> exercises.none { it.exerciseId == candidate.id } },
+            query = pickerQuery,
+            onQueryChange = { pickerQuery = it },
+            onPick = { picked ->
+                val row = selected
+                pickerOpen = false
+                pickerQuery = ""
+                if (pickerReplacing) {
+                    if (row != null) {
+                        structureError = null
+                        scope.launch {
+                            try {
+                                selectedId = withContext(NonCancellable) {
+                                    repository.replaceSessionExercise(row.id, picked.id)
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                structureError = e.message ?: "Could not replace the exercise."
+                            }
+                        }
+                    }
+                } else {
+                    dialogError = null
+                    pendingAdd = picked
+                }
+            },
+            onDismiss = { pickerOpen = false },
+        )
+    }
+
+    pendingAdd?.let { exercise ->
+        SessionPrescriptionDialog(
+            title = "Add exercise",
+            exerciseName = exercise.name,
+            initialSets = 3,
+            initialRepMin = 8,
+            initialRepMax = 12,
+            initialRir = null,
+            error = dialogError,
+            onDismiss = {
+                pendingAdd = null
+                dialogError = null
+            },
+            onSave = { newSets, repMin, repMax, targetRir ->
+                scope.launch {
+                    try {
+                        val id = withContext(NonCancellable) {
+                            repository.addSessionExercise(
+                                session.id, exercise.id, newSets, repMin, repMax, targetRir,
+                            )
+                        }
+                        selectedId = id
+                        pendingAdd = null
+                        dialogError = null
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        dialogError = e.message ?: "Could not add the exercise."
+                    }
+                }
+            },
+        )
+    }
+
+    val editTarget = selected
+    if (editOpen && editTarget != null) {
+        SessionPrescriptionDialog(
+            title = "Edit exercise",
+            exerciseName = editTarget.exerciseNameSnapshot,
+            initialSets = editTarget.workingSets,
+            initialRepMin = editTarget.repMin,
+            initialRepMax = editTarget.repMax,
+            initialRir = editTarget.targetRir,
+            error = dialogError,
+            onDismiss = {
+                editOpen = false
+                dialogError = null
+            },
+            onSave = { newSets, repMin, repMax, targetRir ->
+                scope.launch {
+                    try {
+                        withContext(NonCancellable) {
+                            repository.editSessionExercise(
+                                editTarget.id, newSets, repMin, repMax, targetRir,
+                            )
+                        }
+                        editOpen = false
+                        dialogError = null
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        dialogError = e.message ?: "Could not edit the exercise."
+                    }
+                }
+            },
+        )
     }
 
     if (restRemaining > 0) {
@@ -500,6 +664,14 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
                     text = "Target RIR ${rirLabel(exercise.targetRir)}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            exerciseRow?.note?.takeIf { it.isNotBlank() }?.let { note ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag("exercise-note"),
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -617,6 +789,46 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
         }
     }
 
+    if (selected != null) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(
+                onClick = {
+                    dialogError = null
+                    editOpen = true
+                },
+                modifier = Modifier.testTag("edit-session-exercise"),
+            ) {
+                Text("Edit")
+            }
+            TextButton(
+                onClick = {
+                    structureError = null
+                    pickerReplacing = true
+                    pickerQuery = ""
+                    pickerOpen = true
+                },
+                modifier = Modifier.testTag("replace-session-exercise"),
+            ) {
+                Text("Replace")
+            }
+            TextButton(
+                onClick = ::removeSelectedExercise,
+                enabled = sets.isEmpty(),
+                modifier = Modifier.testTag("remove-session-exercise"),
+            ) {
+                Text("Remove")
+            }
+        }
+        structureError?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("session-structure-error"),
+            )
+        }
+    }
+
     editing?.let { set ->
         SetEditorDialog(
             set = set,
@@ -684,6 +896,56 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
         )
     }
 
+    if (finishPromptOpen) {
+        AlertDialog(
+            onDismissRequest = {
+                finishPromptOpen = false
+                finishError = null
+            },
+            title = { Text("Update template?") },
+            text = {
+                Column(Modifier.testTag("finish-prompt")) {
+                    Text("The workout structure changed. Update the template to match?")
+                    finishError?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.testTag("finish-error"),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { finish(updateTemplate = true) },
+                    modifier = Modifier.testTag("finish-update-template"),
+                ) {
+                    Text("Update template")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = { finish(updateTemplate = false) },
+                        modifier = Modifier.testTag("finish-this-workout-only"),
+                    ) {
+                        Text("This workout only")
+                    }
+                    TextButton(
+                        onClick = {
+                            finishPromptOpen = false
+                            finishError = null
+                        },
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            },
+        )
+    }
+
     discardPrompt?.let { prompt ->
         AlertDialog(
             onDismissRequest = { discardPrompt = null },
@@ -713,6 +975,135 @@ private fun ActiveSession(repository: BuhatRepository, restTimer: RestTimer, ses
 }
 
 private data class DiscardPrompt(val title: String, val body: String)
+
+@Composable
+private fun SessionExercisePickerDialog(
+    exercises: List<Exercise>,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onPick: (Exercise) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select exercise") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    label = { Text("Search exercises") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("session-picker-search"),
+                )
+                Spacer(Modifier.height(8.dp))
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                ) {
+                    exercises.filter { it.name.contains(query, ignoreCase = true) }.forEach { exercise ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable { onPick(exercise) }
+                                .testTag("session-picker-${exercise.name}")
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = exercise.name,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                text = "${exercise.muscleGroup} · ${exercise.equipment}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun SessionPrescriptionDialog(
+    title: String,
+    exerciseName: String,
+    initialSets: Int,
+    initialRepMin: Int,
+    initialRepMax: Int,
+    initialRir: Int?,
+    error: String?,
+    onSave: (Int, Int, Int, Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var sets by remember(exerciseName) { mutableStateOf(initialSets.toString()) }
+    var repMin by remember(exerciseName) { mutableStateOf(initialRepMin.toString()) }
+    var repMax by remember(exerciseName) { mutableStateOf(initialRepMax.toString()) }
+    var rir by remember(exerciseName) { mutableStateOf(initialRir?.toString().orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(
+                    text = exerciseName,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField("Sets", sets, "session-sets", Modifier.weight(1f)) { sets = it }
+                    NumberField("Min", repMin, "session-rep-min", Modifier.weight(1f)) { repMin = it }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField("Max", repMax, "session-rep-max", Modifier.weight(1f)) { repMax = it }
+                    NumberField("RIR", rir, "session-rir", Modifier.weight(1f)) { rir = it }
+                }
+                Text(
+                    text = "Leave RIR blank for no target.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.testTag("session-dialog-error"),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onSave(
+                        sets.toIntOrNull() ?: -1,
+                        repMin.toIntOrNull() ?: -1,
+                        repMax.toIntOrNull() ?: -1,
+                        if (rir.isBlank()) null else (rir.toIntOrNull() ?: -1),
+                    )
+                },
+                modifier = Modifier.testTag("save-session-exercise"),
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
 
 @Composable
 private fun ExerciseOrderDialog(

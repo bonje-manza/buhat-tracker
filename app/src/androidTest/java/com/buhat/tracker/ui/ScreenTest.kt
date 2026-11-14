@@ -30,6 +30,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.buhat.tracker.BuhatApplication
 import com.buhat.tracker.MainActivity
 import com.buhat.tracker.data.seededId
+import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.ui.theme.BuhatTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -324,6 +325,71 @@ class ScreenTest {
     }
 
     @Test
+    fun libraryNotesFollowPremadeAndCustomExercisesIntoWorkouts() {
+        val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+        runBlocking {
+            val custom = repo.saveExercise(null, "Belt Squat", "Quads", "Machine")
+            repo.saveTemplate(null, "Notes day", listOf(
+                TemplateExerciseDraft(seededId("exercise", "Bench Press"), workingSets = 3, repMin = 6, repMax = 10),
+                TemplateExerciseDraft(custom, workingSets = 3, repMin = 6, repMax = 10),
+            ))
+        }
+        openWorkouts()
+        compose.onNodeWithTag("workouts-menu").performClick()
+        clickMenuTag("open-library")
+        for ((name, note) in listOf("Bench Press" to "Keep elbows tucked", "Belt Squat" to "Pause at the bottom\n控制")) {
+            compose.onNodeWithTag("library-search").performTextReplacement(name)
+            awaitTag("exercise-menu-$name")
+            compose.onNodeWithTag("exercise-menu-$name").performClick()
+            clickMenuItem("Exercise settings")
+            compose.onNodeWithTag("pref-note").performScrollTo().performTextReplacement(note)
+            compose.onNodeWithTag("save-exercise-prefs").performClick()
+            compose.waitUntil(5_000) {
+                compose.onAllNodes(hasTestTag("exercise-settings")).fetchSemanticsNodes().isEmpty()
+            }
+        }
+        compose.activityRule.scenario.recreate()
+        awaitTag("screen-Library")
+        compose.onNodeWithTag("back").performClick()
+        awaitTag("start-workout-Notes day")
+        compose.onNodeWithTag("start-workout-Notes day").performScrollTo().performClick()
+        awaitText("exercise-note", "Keep elbows tucked")
+        compose.onNodeWithTag("exercise-note").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("exercise-chip-Belt Squat").performScrollTo().performClick()
+        awaitText("exercise-note", "Pause at the bottom\n控制")
+        compose.onNodeWithTag("exercise-note").assertTextEquals("Pause at the bottom\n控制")
+        compose.onNodeWithText("Keep elbows tucked").assertDoesNotExist()
+        compose.activityRule.scenario.recreate()
+        awaitText("exercise-note", "Pause at the bottom\n控制")
+    }
+
+    @Test
+    fun recreatedLibraryDoesNotRestoreAnotherExercisesNoteDraft() {
+        val repo = ApplicationProvider.getApplicationContext<BuhatApplication>().container.repository
+        runBlocking {
+            val custom = repo.saveExercise(null, "Belt Squat", "Quads", "Machine")
+            repo.saveExercisePreferences(custom, null, null, "Pause at the bottom", false)
+        }
+        openWorkouts()
+        compose.onNodeWithTag("workouts-menu").performClick()
+        clickMenuTag("open-library")
+        compose.onNodeWithTag("library-search").performTextReplacement("Bench Press")
+        awaitTag("exercise-menu-Bench Press")
+        compose.onNodeWithTag("exercise-menu-Bench Press").performClick()
+        clickMenuItem("Exercise settings")
+        compose.onNodeWithTag("pref-note").performScrollTo().performTextReplacement("Bench-only draft")
+
+        compose.activityRule.scenario.recreate()
+        awaitTag("screen-Library")
+        compose.onNodeWithTag("library-search").performTextReplacement("Belt Squat")
+        awaitTag("exercise-menu-Belt Squat")
+        compose.onNodeWithTag("exercise-menu-Belt Squat").performClick()
+        clickMenuItem("Exercise settings")
+        compose.onNodeWithTag("pref-note").assertTextContains("Pause at the bottom")
+        compose.onNodeWithText("Bench-only draft").assertDoesNotExist()
+    }
+
+    @Test
     fun customExerciseMenuKeepsItsActionsAndAddsSettings() {
         openWorkouts()
         compose.onNodeWithTag("workouts-menu").performClick()
@@ -367,6 +433,7 @@ class ScreenTest {
         clickMenuTag("open-library")
         compose.onNodeWithTag("exercise-menu-Belt Squat").performClick()
         clickMenuItem("Delete exercise")
+        awaitMenuItem("Used in a template")
         compose.onNodeWithText("Used in a template").assertExists()
         compose.onNodeWithTag("confirm-archive").performClick()
         compose.waitUntil(5_000) {

@@ -169,7 +169,7 @@ class RestTimerRepositoryTest {
     fun workingRestOverrideAppliesOnlyToWorkingSets() = runTest {
         val sessionId = repo.startSession(seededId("template", "Push Day A"))
         val exercise = repo.sessionExercises(sessionId).first().first()
-        repo.saveExercisePreferences(exercise.exerciseId, null, 180)
+        repo.saveExercisePreferences(exercise.exerciseId, null, 180, null, false)
 
         val before = System.currentTimeMillis()
         repo.logSet(exercise.id, SetType.WARMUP, weightKg = 40.0, reps = 10, rir = 4)
@@ -189,7 +189,7 @@ class RestTimerRepositoryTest {
     fun zeroWorkingOverrideStartsNoRest() = runTest {
         val sessionId = repo.startSession(seededId("template", "Push Day A"))
         val exercise = repo.sessionExercises(sessionId).first().first()
-        repo.saveExercisePreferences(exercise.exerciseId, null, 0)
+        repo.saveExercisePreferences(exercise.exerciseId, null, 0, null, false)
 
         repo.logSet(exercise.id, SetType.WORKING, weightKg = 80.0, reps = 8, rir = 2)
 
