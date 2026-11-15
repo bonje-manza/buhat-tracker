@@ -1257,11 +1257,11 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Work**
 
-- [ ] Add the CSV parser and parser tests.
-- [ ] Add the Strong parser, validator, row mapper, identity, and RPE conversion.
-- [ ] Add repository preview and transactional append with duplicate skipping.
-- [ ] Add the Settings entry and import screen with file picker, preview, mapping, and confirm.
-- [ ] Add import tests for the supplied layout, notes, duplicate imports, unsupported rows, and rollback.
+- [x] Add the CSV parser and parser tests.
+- [x] Add the Strong parser, validator, row mapper, identity, and RPE conversion.
+- [x] Add repository preview and transactional append with duplicate skipping.
+- [x] Add the Settings entry and import screen with file picker, preview, mapping, and confirm.
+- [x] Add import tests for the supplied layout, notes, duplicate imports, unsupported rows, and rollback.
 
 **Acceptance checks**
 
@@ -1280,6 +1280,8 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 - Imported data survives a backup round trip and appears in Workout history.
 
 **Decision gate:** Confirm the real export's encoding, line endings, date meaning, row coverage, and blank-weight semantics. If no local copy of the original file is available, use a sanitized fixture matching the supplied schema and run the real file before release.
+
+**Result (automated):** 2026-11-15. Full suite passes: 153 unit tests and 271 device tests, 0 failed, 0 skipped. The CSV reader handles quoted semicolons, escaped quotes, multiline fields, BOM, and CRLF. The Strong parser groups by workout, maps warmup/working/failure sets, excludes Rest Timer and Note rows, converts RPE 6..10 half-steps to RIR 4,4,3,3,2,2,1,1,0, keeps blank RPE null, preserves exercise and workout notes, and blocks unknown tags, populated distance, missing reps, duplicate identities, and disagreeing date/name/duration with row numbers. Preview and import skip identities already stored in `WorkoutSession.importKey`, write in one transaction, and use `templateIdSnapshot = "strong-import"`. Backup validation accepts that sentinel so imported sessions round-trip; no DTO, schema, or format change. Settings opens the import screen, which maps unmatched names to an existing exercise or a new one requiring name, muscle group, and equipment. Tests were observed failing before implementation, and the UI test failed when the imported exercise note was removed on purpose. The fixture is sanitized, not captured: 33 workouts from 2026-06-24 through 2026-08-30. The real Strong export, including its encoding, line endings, and blank-weight semantics, remains the Phase 22 release gate.
 
 ### Phase 22 - Verification and release
 
@@ -1350,8 +1352,8 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 ### Dependencies and parallel work
 
-- Completed: Phases 0-20, except Phase 14 manual checks 10-13 and the visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22.
-- Remaining critical path: Phase 21 -> 22. Phase 21 can start now because Phase 20 is complete.
+- Completed: Phases 0-21, except Phase 14 manual checks 10-13 and the visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22.
+- Remaining critical path: Phase 22. Phase 21 is complete.
 - Phase 20 depends on notes, sides, and replacement display. Phase 21 depends on the data model and whole-workout history. Phase 22 follows all new phases.
 - Shared contracts to freeze before parallel work: the side-aware domain signatures, the import identity string, and the new dialog and screen test tags. The schema 4 fields, `SetSide`, the note cap, `BACKUP_FORMAT_VERSION = 3`, and the finish prompt states are implemented and frozen.
 
@@ -1421,4 +1423,4 @@ None. Temurin JDK 21 is installed and `JAVA_HOME` points at it.
 
 ### Next step
 
-Phase 20 is complete. Next implementation phase is Phase 21: Strong CSV import with preview, exercise mapping, duplicate skipping, notes, and RPE conversion. The pending Phase 14 manual checks 10-13 and visual pass remain, with physical-phone process-kill and release validation in Phase 22.
+Phase 21 is complete. Next implementation phase is Phase 22: full verification on a real device and the signed release build. The pending Phase 14 manual checks 10-13 and visual pass remain, with the real Strong export, physical-phone process-kill, and release validation in Phase 22.
