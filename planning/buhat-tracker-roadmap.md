@@ -2,7 +2,7 @@
 
 ## 1. Status, goal, and success criteria
 
-**Status:** Phases 0-19 are complete except the Phase 14 manual checks 10-13 and the Phase 14 visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22. The previous baseline shipped as `versionCode 3`, `versionName 1.0.1`. Phase 14 automated validation passes, the signed `versionCode 4` / `versionName 1.1.0` build is verified, and it installed over v1.0.1 on SM-S711W with data intact. Baseline recorded on 2026-11-08: 101 unit tests and 181 device tests, 0 failed. Latest recorded on 2026-11-14: 133 unit tests and 254 device tests, 0 failed. Rerun both suites before and after each phase. Phases 20-22 are planned and not started.
+**Status:** Phases 0-20 are complete except the Phase 14 manual checks 10-13 and the Phase 14 visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22. The previous baseline shipped as `versionCode 3`, `versionName 1.0.1`. Phase 14 automated validation passes, the signed `versionCode 4` / `versionName 1.1.0` build is verified, and it installed over v1.0.1 on SM-S711W with data intact. Baseline recorded on 2026-11-08: 101 unit tests and 181 device tests, 0 failed. Latest recorded on 2026-11-15: 133 unit tests and 256 device tests, 0 failed. Rerun both suites before and after each phase. Phases 21-22 are planned and not started.
 
 **Goal:** A private, offline Android strength log for you and your friends. Each install owns its data. You train from premade or custom templates, log every set with weight, reps, RIR, and type, get per-set double-progression targets, run a rest timer, and review e1RM progress. Any exercise can show and accept its own weight unit and its own working rest, and exercises can be reordered during an active workout. Each exercise can carry a persistent note and a unilateral flag. Exercises can be added, edited, replaced, or removed during a workout, with an optional template save-back at finish. Data moves by JSON export/import, and Strong CSV exports can be imported. Progress can show whole workouts. Delivery is a signed APK.
 
@@ -1225,15 +1225,19 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 **Outcome:** Progress can show every finished workout without choosing an exercise.
 
+**Completed:** 2026-11-15. Progress has an Exercise/History mode control saved with `rememberSaveable`. History loads complete finished sessions newest first and shows a card per workout with its name, date, session note, and on expand each exercise occurrence in position order with its note, effective unit, every set, L/R labels, and PR badge. Replaced exercises stay as separate occurrences. Delete reuses the existing confirmation and removes the workout from both modes.
+
+**Verification:** `.opencode/skills/e2e-testing/scripts/run-e2e.ps1` passed with 133 unit tests and 256 managed-device tests, 0 failed or skipped. New tests and the empty state were observed failing before implementation. A mutation check on the per-exercise unit lookup was caught by the lb assertion. The first full run hit an unrelated Compose layout exception in `ActiveWorkoutTest.setEditDialogUsesTheSameFourPlusSelector`; its isolated rerun and the final full run passed. No schema or backup-format change.
+
 **Prerequisites:** Phases 16, 17, and 19 for notes and side labels. Phase 18 for replaced-exercise display.
 
 **Work**
 
-- [ ] Add the Progress mode control and state.
-- [ ] Load complete finished sessions for Workout history.
-- [ ] Add a whole-session card with session notes, exercise notes, side labels, and repeated exercise occurrences.
-- [ ] Reuse deletion, formatting, and unit resolution.
-- [ ] Add mode, deletion, mixed-unit, imported, and empty-state tests.
+- [x] Add the Progress mode control and state.
+- [x] Load complete finished sessions for Workout history.
+- [x] Add a whole-session card with session notes, exercise notes, side labels, and repeated exercise occurrences.
+- [x] Reuse deletion, formatting, and unit resolution.
+- [x] Add mode, deletion, mixed-unit, imported, and empty-state tests.
 
 **Acceptance checks**
 
@@ -1338,7 +1342,7 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 | Persistent exercise note | Phase 17 | Unit and device tests cover restart, next-workout visibility, clearing, 2,000/2,001 bounds, failed-write retry, and backup round trips |
 | Mid-workout exercise changes | Phase 18 | `SessionRepositoryTest` and `ActiveWorkoutTest` cover add, edit, replace, remove, and reorder; set retention; prompt branches; unique copy names; repeated finish; and save-back rollback |
 | Unilateral tracking | Phase 19 | Left and Right targets, PRs, charts, rest, set counts, and volume are independent |
-| Whole-workout history | Phase 20 | Any finished workout opens without an exercise picker; repeated exercises and side labels render |
+| Whole-workout history | Phase 20 | `ProgressScreenTest` covers a workout without the selected exercise, mode survival, session and exercise notes, mixed units, PR badges, repeated occurrences with side labels, deletion, and the empty state |
 | Strong CSV import | Phase 21 | Preview, mapping, notes, RPE conversion, duplicate skip, and transactional rollback pass |
 | New feature release | Phase 22 | Full suites, real-data migration, release install, and backup round trip pass |
 
@@ -1346,8 +1350,8 @@ Each phase ends with a working build and a verifiable outcome. Do not start a ph
 
 ### Dependencies and parallel work
 
-- Completed: Phases 0-19, except Phase 14 manual checks 10-13 and the visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22.
-- Remaining critical path: Phase 20 -> 21 -> 22. Phase 20 can start now because Phase 19 is complete.
+- Completed: Phases 0-20, except Phase 14 manual checks 10-13 and the visual pass, which remain. Physical-phone process-kill and release checks are part of Phase 22.
+- Remaining critical path: Phase 21 -> 22. Phase 21 can start now because Phase 20 is complete.
 - Phase 20 depends on notes, sides, and replacement display. Phase 21 depends on the data model and whole-workout history. Phase 22 follows all new phases.
 - Shared contracts to freeze before parallel work: the side-aware domain signatures, the import identity string, and the new dialog and screen test tags. The schema 4 fields, `SetSide`, the note cap, `BACKUP_FORMAT_VERSION = 3`, and the finish prompt states are implemented and frozen.
 
@@ -1417,4 +1421,4 @@ None. Temurin JDK 21 is installed and `JAVA_HOME` points at it.
 
 ### Next step
 
-Phase 19 is complete. Next implementation phase is Phase 20: whole-workout history, preserving exercise order, replacements, notes, and side labels. The pending Phase 14 manual checks 10-13 and visual pass remain, with physical-phone process-kill and release validation in Phase 22.
+Phase 20 is complete. Next implementation phase is Phase 21: Strong CSV import with preview, exercise mapping, duplicate skipping, notes, and RPE conversion. The pending Phase 14 manual checks 10-13 and visual pass remain, with physical-phone process-kill and release validation in Phase 22.
