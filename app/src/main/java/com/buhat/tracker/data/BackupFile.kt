@@ -4,9 +4,29 @@ import android.content.ContentResolver
 import android.net.Uri
 import java.io.ByteArrayOutputStream
 
-internal fun readBackupText(resolver: ContentResolver, uri: Uri): String {
-    val stream = resolver.openInputStream(uri)
-        ?: throw BackupException("Could not read the backup file.")
+internal fun readBackupText(resolver: ContentResolver, uri: Uri): String =
+    readTextFile(
+        resolver = resolver,
+        uri = uri,
+        missingMessage = "Could not read the backup file.",
+        tooLargeMessage = "This backup file is larger than 20 MB.",
+    )
+
+internal fun readStrongCsvText(resolver: ContentResolver, uri: Uri): String =
+    readTextFile(
+        resolver = resolver,
+        uri = uri,
+        missingMessage = "Could not read the CSV file.",
+        tooLargeMessage = "This CSV file is larger than 20 MB.",
+    )
+
+private fun readTextFile(
+    resolver: ContentResolver,
+    uri: Uri,
+    missingMessage: String,
+    tooLargeMessage: String,
+): String {
+    val stream = resolver.openInputStream(uri) ?: throw BackupException(missingMessage)
     return stream.use { input ->
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(8192)
@@ -16,7 +36,7 @@ internal fun readBackupText(resolver: ContentResolver, uri: Uri): String {
             if (read < 0) break
             total += read
             if (total > MAX_BACKUP_BYTES) {
-                throw BackupException("This backup file is larger than 20 MB.")
+                throw BackupException(tooLargeMessage)
             }
             output.write(buffer, 0, read)
         }

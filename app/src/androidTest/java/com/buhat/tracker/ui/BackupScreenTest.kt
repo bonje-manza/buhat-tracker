@@ -64,7 +64,7 @@ class BackupScreenTest {
         restoration.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
                 BuhatTheme {
-                    SettingsScreen(repo, controller, app.container.diagnosticsController, onBack = {}, onOpenProfile = {})
+                    SettingsScreen(repo, controller, app.container.diagnosticsController, onBack = {}, onOpenProfile = {}, onImportStrong = {})
                 }
             }
         }

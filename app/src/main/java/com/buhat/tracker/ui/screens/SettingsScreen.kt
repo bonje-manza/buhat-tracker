@@ -60,6 +60,7 @@ fun SettingsScreen(
     diagnosticsController: DiagnosticsController,
     onBack: () -> Unit,
     onOpenProfile: () -> Unit,
+    onImportStrong: () -> Unit,
 ) {
     val profileStore = repository.profileStore
     val settingsStore = repository.settingsStore
@@ -272,6 +273,14 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth().testTag("import-data"),
                     ) {
                         Text("Import data")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onImportStrong,
+                        enabled = hasActiveSession == false && !busy,
+                        modifier = Modifier.fillMaxWidth().testTag("import-strong"),
+                    ) {
+                        Text("Import from Strong")
                     }
                     if (busy) Text("Working…", modifier = Modifier.testTag("backup-busy"))
                     message?.let {

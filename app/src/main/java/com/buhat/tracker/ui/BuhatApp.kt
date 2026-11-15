@@ -50,6 +50,7 @@ import com.buhat.tracker.ui.screens.HomeScreen
 import com.buhat.tracker.ui.screens.ProfileEditorScreen
 import com.buhat.tracker.ui.screens.ProgressScreen
 import com.buhat.tracker.ui.screens.SettingsScreen
+import com.buhat.tracker.ui.screens.StrongImportScreen
 import com.buhat.tracker.ui.screens.TemplateEditorScreen
 import com.buhat.tracker.ui.screens.WorkoutsScreen
 import kotlinx.coroutines.flow.catch
@@ -121,6 +122,13 @@ fun BuhatApp(
                 diagnosticsController = diagnosticsController,
                 onBack = { nav.popBackStack() },
                 onOpenProfile = { nav.navigate("profile") },
+                onImportStrong = { nav.navigate("strong-import") },
+            )
+        }
+        composable("strong-import") {
+            StrongImportScreen(
+                repository = repository,
+                onBack = { nav.popBackStack() },
             )
         }
     }
