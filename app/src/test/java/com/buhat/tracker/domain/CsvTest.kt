@@ -53,4 +53,13 @@ class CsvTest {
 
         assertTrue("was '${error.message}'", error.message.orEmpty().contains("Row 1"))
     }
+
+    @Test
+    fun `pathologically long file is rejected`() {
+        val error = assertThrows(CsvException::class.java) {
+            parseCsv((1..100_001).joinToString("\n") { "x" })
+        }
+
+        assertTrue("was '${error.message}'", error.message.orEmpty().contains("100000"))
+    }
 }

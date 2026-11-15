@@ -172,9 +172,23 @@ class StrongImportScreenTest {
         startStrongScreen()
         compose.onNodeWithTag("strong-choose-file").performClick()
 
-        awaitText("No new workouts. All 33 workouts were already imported.")
+        awaitText("No new workouts. Skipped 33 already imported.")
         compose.onNodeWithTag("strong-confirm").assertDoesNotExist()
         compose.onNodeWithTag("strong-preview").assertExists()
+    }
+
+    @Test
+    fun allWarmupFileReportsSkippedEmpty() {
+        file.writeText(
+            "Workout #;Date;Workout Name;Duration (sec);Exercise Name;Set Order;Weight (kg);Reps;RPE;" +
+                "Distance (meters);Seconds;Notes;Workout Notes\r\n" +
+                "1;2026-06-24 08:00:00;FBEOD;3600;Bench Press;W;40;10;;;;;\r\n",
+        )
+        startStrongScreen()
+        compose.onNodeWithTag("strong-choose-file").performClick()
+
+        awaitText("No new workouts. Skipped 1 with no working sets.")
+        compose.onNodeWithTag("strong-confirm").assertDoesNotExist()
     }
 
     @Test

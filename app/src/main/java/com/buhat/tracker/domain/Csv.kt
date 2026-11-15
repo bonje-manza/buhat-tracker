@@ -5,6 +5,8 @@ data class CsvRow(val line: Int, val fields: List<String>)
 
 class CsvException(message: String) : Exception(message)
 
+private const val MAX_CSV_ROWS = 100_000
+
 // RFC 4180-style reader. Strong exports use ';' and quote every text field.
 fun parseCsv(text: String, delimiter: Char = ';'): List<CsvRow> {
     val src = text.removePrefix("\uFEFF")
@@ -88,6 +90,9 @@ fun parseCsv(text: String, delimiter: Char = ';'): List<CsvRow> {
             }
         }
         rows.add(CsvRow(startLine, fields))
+        if (rows.size > MAX_CSV_ROWS) {
+            throw CsvException("The file has more than $MAX_CSV_ROWS rows.")
+        }
     }
     return rows
 }

@@ -222,9 +222,10 @@ class StrongImportRepositoryTest {
     }
 
     @Test
-    fun mappingTwoSourceNamesToOneExerciseKeepsSeparateOccurrences() = runTest {
+    fun mappingTwoSourceNamesToOneExerciseMergesIntoOneRoundTrippableCard() = runTest {
         val text = csv(
             row(exercise = "Seated Row (Cable)", setOrder = "1", weight = "60", reps = "10"),
+            row(exercise = "Cable Row", setOrder = "Note", weight = "", reps = "", rpe = "", notes = "paused reps"),
             row(exercise = "Cable Row", setOrder = "1", weight = "65", reps = "8"),
         )
         val target = seededId("exercise", "Seated Cable Row")
@@ -236,14 +237,32 @@ class StrongImportRepositoryTest {
                 StrongMapping(sourceName = "Cable Row", existingExerciseId = target),
             ),
         )
+        val exported = repo.exportBackup()
+        repo.importBackup(exported)
 
         val history = repo.history().first().single()
-        assertEquals(
-            listOf("Seated Row (Cable)", "Cable Row"),
-            history.exercises.map { it.exerciseNameSnapshot },
-        )
-        assertEquals(listOf(target, target), history.exercises.map { it.exerciseId })
-        assertEquals(2, history.exercises.size)
+        val exercise = history.exercises.single()
+        assertEquals(target, exercise.exerciseId)
+        assertEquals("Seated Row (Cable)", exercise.exerciseNameSnapshot)
+        assertEquals(listOf(60.0, 65.0), exercise.sets.map { it.weightKg })
+        assertEquals(listOf(1, 2), exercise.sets.map { it.workingIndex })
+        assertEquals("paused reps", exercise.note)
+    }
+
+    @Test
+    fun archivedExerciseIsNotAutoMatched() = runTest {
+        val archived = repo.saveExercise(null, "Seated Row (Cable)", "Back", "Cable")
+        repo.archiveExercise(archived)
+        val text = csv(row(exercise = "Seated Row (Cable)", setOrder = "1"))
+
+        val preview = repo.previewStrongImport(text)
+        assertNull(preview.sources.single().matchedExerciseId)
+
+        val error = assertThrows(StrongCsvException::class.java) {
+            runBlocking { repo.importStrong(text, emptyList()) }
+        }
+        assertTrue("was '${error.message}'", error.message.orEmpty().contains("Map"))
+        assertEquals(0, db.dao().allSessions().size)
     }
 
     @Test

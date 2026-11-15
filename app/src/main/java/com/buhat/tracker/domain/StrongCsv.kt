@@ -9,7 +9,19 @@ import kotlin.math.floor
 
 const val STRONG_TEMPLATE_ID = "strong-import"
 
-class StrongCsvException(val messages: List<String>) : Exception(messages.joinToString("\n"))
+private const val MAX_REPORTED_ERRORS = 20
+private const val MAX_ERROR_LENGTH = 300
+
+class StrongCsvException(messages: List<String>) : Exception(
+    buildString {
+        messages.take(MAX_REPORTED_ERRORS).forEach { message ->
+            if (isNotEmpty()) append('\n')
+            append(message.take(MAX_ERROR_LENGTH))
+        }
+        val remaining = messages.size - MAX_REPORTED_ERRORS
+        if (remaining > 0) append("\nAnd $remaining more rows failed.")
+    },
+)
 
 data class StrongSet(
     val setType: SetType,

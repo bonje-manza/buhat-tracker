@@ -265,6 +265,21 @@ class StrongCsvTest {
     }
 
     @Test
+    fun `error report caps rows and truncates values`() {
+        val many = (1..25).map { index -> row(workout = index.toString(), setOrder = "Drop") }
+        val capped = assertThrows(StrongCsvException::class.java) {
+            parseStrongCsv(csv(*many.toTypedArray()))
+        }
+        assertTrue("was '${capped.message}'", capped.message.orEmpty().contains("And 5 more rows failed."))
+        assertTrue("length ${capped.message!!.length}", capped.message!!.length < 10_000)
+
+        val longValue = assertThrows(StrongCsvException::class.java) {
+            parseRow(row(setOrder = "1", distance = "x".repeat(1000)))
+        }
+        assertTrue("length ${longValue.message!!.length}", longValue.message!!.length < 1_000)
+    }
+
+    @Test
     fun `nonpositive start and absurd duration block`() {
         val date = assertThrows(StrongCsvException::class.java) {
             parseRow(row(date = "0001-01-01 00:00:00", setOrder = "1"))

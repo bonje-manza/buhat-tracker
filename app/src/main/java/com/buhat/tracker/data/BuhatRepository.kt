@@ -868,7 +868,9 @@ class BuhatRepository(
                 .map { name ->
                     StrongSource(
                         name = name,
-                        matchedExerciseId = allExercises.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id,
+                        matchedExerciseId = allExercises.firstOrNull {
+                            it.archivedAt == null && it.name.equals(name, ignoreCase = true)
+                        }?.id,
                     )
                 },
             exercises = allExercises.filter { it.archivedAt == null }.sortedBy { it.name },
@@ -897,7 +899,9 @@ class BuhatRepository(
 
                 sourceNames.forEach { source ->
                     val options = mappingsBySource[source].orEmpty()
-                    val match = allExercises.firstOrNull { it.name.equals(source, ignoreCase = true) }
+                    val match = allExercises.firstOrNull {
+                        it.archivedAt == null && it.name.equals(source, ignoreCase = true)
+                    }
                     when {
                         options.size > 1 -> errors += "Map \"$source\" to exactly one exercise."
                         options.isEmpty() && match != null -> resolved[source] = match.id
@@ -958,32 +962,41 @@ class BuhatRepository(
                         note = workout.note,
                         importKey = workout.identity,
                     )
-                    workout.exercises.forEachIndexed { position, exercise ->
+                    // One SessionExercise per exercise: backups reject two rows with the same exercise id.
+                    val groups = workout.exercises.groupBy { resolved.getValue(it.sourceName) }.values
+                    groups.forEachIndexed { position, occurrences ->
                         val sessionExerciseId = UUID.randomUUID().toString()
-                        val working = exercise.sets.filter { it.setType != SetType.WARMUP }
+                        val allSets = occurrences.flatMap { it.sets }
+                        val working = allSets.filter { it.setType != SetType.WARMUP }
                         val reps = working.map { it.reps }
                         // shortcut: imported prescriptions are display-only, clamped so backups re-validate
                         val workingSets = working.size.coerceIn(1, 10)
                         val repMin = (reps.minOrNull() ?: 1).coerceIn(1, 30)
                         val repMax = (reps.maxOrNull() ?: 1).coerceIn(repMin, 30)
+                        val note = occurrences.mapNotNull { it.note }
+                            .distinct()
+                            .joinToString("\n\n")
+                            .takeIf { it.isNotEmpty() }
+                            ?.take(MAX_NOTE_LENGTH)
                         sessionExercises += SessionExercise(
                             id = sessionExerciseId,
                             sessionId = sessionId,
-                            exerciseId = resolved.getValue(exercise.sourceName),
-                            exerciseNameSnapshot = exercise.sourceName,
+                            exerciseId = resolved.getValue(occurrences.first().sourceName),
+                            exerciseNameSnapshot = occurrences.first().sourceName,
                             position = position + 1,
                             workingSets = workingSets,
                             repMin = repMin,
                             repMax = repMax,
                             targetRir = null,
-                            note = exercise.note,
+                            note = note,
                         )
-                        exercise.sets.forEach { set ->
+                        var workingIndex = 0
+                        allSets.forEach { set ->
                             sets += LoggedSet(
                                 id = UUID.randomUUID().toString(),
                                 sessionExerciseId = sessionExerciseId,
                                 setType = set.setType,
-                                workingIndex = set.workingIndex,
+                                workingIndex = if (set.setType == SetType.WARMUP) null else ++workingIndex,
                                 weightKg = set.weightKg,
                                 reps = set.reps,
                                 rir = set.rir,

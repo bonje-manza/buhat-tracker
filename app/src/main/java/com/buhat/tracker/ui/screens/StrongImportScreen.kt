@@ -179,8 +179,18 @@ fun StrongImportScreen(
                 Spacer(Modifier.height(16.dp))
                 BuhatCard(Modifier.testTag("strong-preview")) {
                     if (loaded.newWorkouts == 0) {
+                        val skipped = buildList {
+                            if (loaded.skippedDuplicates > 0) add("${loaded.skippedDuplicates} already imported")
+                            if (loaded.skippedEmptyWorkouts > 0) {
+                                add("${loaded.skippedEmptyWorkouts} with no working sets")
+                            }
+                        }
                         Text(
-                            text = "No new workouts. All ${loaded.skippedDuplicates} workouts were already imported.",
+                            text = if (skipped.isEmpty()) {
+                                "No new workouts."
+                            } else {
+                                "No new workouts. Skipped ${skipped.joinToString(" and ")}."
+                            },
                             color = MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.bodyMedium,
                         )
