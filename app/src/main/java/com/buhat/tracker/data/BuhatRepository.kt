@@ -20,13 +20,18 @@ import com.buhat.tracker.domain.HistoryExercise
 import com.buhat.tracker.domain.HistorySession
 import com.buhat.tracker.domain.LoggedSetRecord
 import com.buhat.tracker.domain.MAX_NOTE_LENGTH
+import com.buhat.tracker.domain.PreviousSetSource
+import com.buhat.tracker.domain.STRONG_TEMPLATE_ID
 import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
+import com.buhat.tracker.domain.StrongCsvException
+import com.buhat.tracker.domain.StrongWorkout
 import com.buhat.tracker.domain.TemplateExerciseDraft
 import com.buhat.tracker.domain.WeightUnit
 import com.buhat.tracker.domain.countsForProgression
 import com.buhat.tracker.domain.effectiveWorkingRest
 import com.buhat.tracker.domain.homeWindowStart
+import com.buhat.tracker.domain.parseStrongCsv
 import com.buhat.tracker.domain.priorWindowStart
 import com.buhat.tracker.domain.renumberWorkingSets
 import com.buhat.tracker.domain.restEndsAt
@@ -37,6 +42,7 @@ import com.buhat.tracker.domain.validatePrescription
 import com.buhat.tracker.domain.validateSet
 import com.buhat.tracker.domain.validateTemplate
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -86,6 +92,31 @@ data class TemplateDraft(
 )
 
 enum class DeleteExerciseResult { DELETED, ARCHIVED }
+
+data class StrongSource(val name: String, val matchedExerciseId: String?)
+
+data class StrongPreview(
+    val newWorkouts: Int,
+    val skippedDuplicates: Int,
+    val skippedEmptyWorkouts: Int,
+    val firstStartedAt: Long?,
+    val lastStartedAt: Long?,
+    val warmupSets: Int,
+    val workingSets: Int,
+    val failureSets: Int,
+    val sources: List<StrongSource>,
+    val exercises: List<Exercise>,
+)
+
+data class StrongMapping(
+    val sourceName: String,
+    val existingExerciseId: String? = null,
+    val newExerciseName: String? = null,
+    val muscleGroup: String? = null,
+    val equipment: String? = null,
+)
+
+data class StrongImportResult(val workouts: Int, val skippedDuplicates: Int, val sets: Int)
 
 class BuhatRepository(
     private val database: BuhatDatabase,
@@ -814,6 +845,182 @@ class BuhatRepository(
             }
         }
     }
+
+    suspend fun previewStrongImport(text: String): StrongPreview = withContext(Dispatchers.IO) {
+        val dao = database.dao()
+        if (dao.activeSessionCount() > 0) throw StrongCsvException(listOf(ACTIVE_WORKOUT_BLOCK))
+        val parsed = parseStrongCsv(text)
+        val imported = dao.importKeys().toSet()
+        val newWorkouts = parsed.workouts.filter { it.identity !in imported }
+        val allExercises = dao.allExercises()
+        StrongPreview(
+            newWorkouts = newWorkouts.size,
+            skippedDuplicates = parsed.workouts.size - newWorkouts.size,
+            skippedEmptyWorkouts = parsed.skippedEmptyWorkouts,
+            firstStartedAt = newWorkouts.minOfOrNull { it.startedAt },
+            lastStartedAt = newWorkouts.maxOfOrNull { it.startedAt },
+            warmupSets = newWorkouts.countSets(SetType.WARMUP),
+            workingSets = newWorkouts.countSets(SetType.WORKING),
+            failureSets = newWorkouts.countSets(SetType.FAILURE),
+            sources = newWorkouts.flatMap { it.exercises }
+                .map { it.sourceName }
+                .distinct()
+                .map { name ->
+                    StrongSource(
+                        name = name,
+                        matchedExerciseId = allExercises.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id,
+                    )
+                },
+            exercises = allExercises.filter { it.archivedAt == null }.sortedBy { it.name },
+        )
+    }
+
+    suspend fun importStrong(text: String, mappings: List<StrongMapping>): StrongImportResult =
+        withContext(Dispatchers.IO) {
+            sessionWriteMutex.withLock {
+                val dao = database.dao()
+                if (dao.activeSessionCount() > 0) throw StrongCsvException(listOf(ACTIVE_WORKOUT_BLOCK))
+                val parsed = parseStrongCsv(text)
+                val imported = dao.importKeys().toSet()
+                val newWorkouts = parsed.workouts.filter { it.identity !in imported }
+                val skippedDuplicates = parsed.workouts.size - newWorkouts.size
+                if (newWorkouts.isEmpty()) return@withLock StrongImportResult(0, skippedDuplicates, 0)
+
+                val allExercises = dao.allExercises()
+                val byId = allExercises.associateBy { it.id }
+                val namesTaken = allExercises.map { it.nameLower }.toMutableSet()
+                val mappingsBySource = mappings.groupBy { it.sourceName }
+                val resolved = mutableMapOf<String, String>()
+                val newCustom = mutableListOf<Exercise>()
+                val errors = mutableListOf<String>()
+                val sourceNames = newWorkouts.flatMap { it.exercises }.map { it.sourceName }.distinct()
+
+                sourceNames.forEach { source ->
+                    val options = mappingsBySource[source].orEmpty()
+                    val match = allExercises.firstOrNull { it.name.equals(source, ignoreCase = true) }
+                    when {
+                        options.size > 1 -> errors += "Map \"$source\" to exactly one exercise."
+                        options.isEmpty() && match != null -> resolved[source] = match.id
+                        options.isEmpty() -> errors += "Map \"$source\" to a Buhat exercise."
+                        else -> {
+                            val mapping = options.single()
+                            when {
+                                mapping.existingExerciseId != null && mapping.newExerciseName != null ->
+                                    errors += "Choose an existing exercise or create one for \"$source\", not both."
+                                mapping.existingExerciseId != null -> {
+                                    val existing = byId[mapping.existingExerciseId]
+                                    if (existing == null) errors += "Exercise not found for \"$source\"."
+                                    else resolved[source] = existing.id
+                                }
+                                else -> {
+                                    val name = mapping.newExerciseName?.trim().orEmpty()
+                                    val muscleGroup = mapping.muscleGroup?.trim().orEmpty()
+                                    val equipment = mapping.equipment?.trim().orEmpty()
+                                    val nameError = validateExerciseName(name, namesTaken)
+                                    when {
+                                        nameError != null -> errors += "$nameError Source: \"$source\"."
+                                        muscleGroup.isEmpty() || equipment.isEmpty() ->
+                                            errors += "Muscle group and equipment are required for \"$source\"."
+                                        else -> {
+                                            val exercise = Exercise(
+                                                id = UUID.randomUUID().toString(),
+                                                name = name,
+                                                nameLower = name.lowercase(),
+                                                muscleGroup = muscleGroup,
+                                                equipment = equipment,
+                                                isCustom = true,
+                                                createdAt = System.currentTimeMillis(),
+                                            )
+                                            namesTaken += exercise.nameLower
+                                            newCustom += exercise
+                                            resolved[source] = exercise.id
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (errors.isNotEmpty()) throw StrongCsvException(errors)
+
+                val sessions = mutableListOf<WorkoutSession>()
+                val sessionExercises = mutableListOf<SessionExercise>()
+                val sets = mutableListOf<LoggedSet>()
+                newWorkouts.forEach { workout ->
+                    val sessionId = UUID.randomUUID().toString()
+                    sessions += WorkoutSession(
+                        id = sessionId,
+                        templateIdSnapshot = STRONG_TEMPLATE_ID,
+                        templateNameSnapshot = workout.name,
+                        startedAt = workout.startedAt,
+                        finishedAt = workout.finishedAt,
+                        status = WorkoutStatus.FINISHED,
+                        note = workout.note,
+                        importKey = workout.identity,
+                    )
+                    workout.exercises.forEachIndexed { position, exercise ->
+                        val sessionExerciseId = UUID.randomUUID().toString()
+                        val working = exercise.sets.filter { it.setType != SetType.WARMUP }
+                        val reps = working.map { it.reps }
+                        // shortcut: imported prescriptions are display-only, clamped so backups re-validate
+                        val workingSets = working.size.coerceIn(1, 10)
+                        val repMin = (reps.minOrNull() ?: 1).coerceIn(1, 30)
+                        val repMax = (reps.maxOrNull() ?: 1).coerceIn(repMin, 30)
+                        sessionExercises += SessionExercise(
+                            id = sessionExerciseId,
+                            sessionId = sessionId,
+                            exerciseId = resolved.getValue(exercise.sourceName),
+                            exerciseNameSnapshot = exercise.sourceName,
+                            position = position + 1,
+                            workingSets = workingSets,
+                            repMin = repMin,
+                            repMax = repMax,
+                            targetRir = null,
+                            note = exercise.note,
+                        )
+                        exercise.sets.forEach { set ->
+                            sets += LoggedSet(
+                                id = UUID.randomUUID().toString(),
+                                sessionExerciseId = sessionExerciseId,
+                                setType = set.setType,
+                                workingIndex = set.workingIndex,
+                                weightKg = set.weightKg,
+                                reps = set.reps,
+                                rir = set.rir,
+                                completedAt = set.completedAt,
+                                side = null,
+                            )
+                        }
+                    }
+                }
+
+                try {
+                    database.withTransaction {
+                        if (dao.activeSessionCount() > 0) throw StrongCsvException(listOf(ACTIVE_WORKOUT_BLOCK))
+                        if (newCustom.isNotEmpty() && dao.insertExercises(newCustom).any { it == -1L }) {
+                            throw StrongCsvException(listOf("An exercise name is already used. Nothing was saved."))
+                        }
+                        val inserted = dao.insertSessions(sessions) +
+                            dao.insertSessionExercises(sessionExercises) +
+                            dao.insertSets(sets)
+                        if (inserted.any { it == -1L }) {
+                            throw StrongCsvException(listOf("Could not import the Strong export. Nothing was saved."))
+                        }
+                    }
+                } catch (e: StrongCsvException) {
+                    throw e
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    throw StrongCsvException(listOf("Could not import the Strong export. Nothing was saved."))
+                }
+
+                StrongImportResult(newWorkouts.size, skippedDuplicates, sets.size)
+            }
+        }
+
+    private fun List<StrongWorkout>.countSets(type: SetType): Int =
+        sumOf { workout -> workout.exercises.sumOf { exercise -> exercise.sets.count { it.setType == type } } }
 
     suspend fun seedIfNeeded() {
         val current = settingsStore.settings.first().seedVersion

@@ -349,6 +349,9 @@ interface BuhatDao {
     @Query("SELECT * FROM WorkoutSession ORDER BY startedAt, id")
     suspend fun allSessions(): List<WorkoutSession>
 
+    @Query("SELECT importKey FROM WorkoutSession WHERE importKey IS NOT NULL")
+    suspend fun importKeys(): List<String>
+
     @Query("SELECT * FROM SessionExercise ORDER BY sessionId, position")
     suspend fun allSessionExercises(): List<SessionExercise>
 

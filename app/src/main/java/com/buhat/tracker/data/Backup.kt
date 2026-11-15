@@ -11,6 +11,7 @@ import com.buhat.tracker.domain.AppTheme
 import com.buhat.tracker.domain.MAX_NOTE_LENGTH
 import com.buhat.tracker.domain.MAX_TEXT_LENGTH
 import com.buhat.tracker.domain.PreviousSetSource
+import com.buhat.tracker.domain.STRONG_TEMPLATE_ID
 import com.buhat.tracker.domain.SetSide
 import com.buhat.tracker.domain.SetType
 import com.buhat.tracker.domain.WeightUnit
@@ -312,7 +313,8 @@ private fun validateBackup(backup: Backup) {
     val sessionIds = backup.sessions.map { it.id }.toSet()
     if (backup.sessionExercises.map { it.sessionId }.toSet() != sessionIds) corrupt()
     backup.sessions.forEach {
-        if (!validId(it.templateIdSnapshot) || it.templateNameSnapshot.isBlank()) corrupt()
+        if (!validId(it.templateIdSnapshot) && it.templateIdSnapshot != STRONG_TEMPLATE_ID) corrupt()
+        if (it.templateNameSnapshot.isBlank()) corrupt()
         if (it.templateNameSnapshot.length > MAX_TEXT_LENGTH) outOfRange()
         it.note?.let { note -> if (note.length > MAX_NOTE_LENGTH) outOfRange() }
         it.importKey?.let { key ->
