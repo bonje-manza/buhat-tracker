@@ -144,6 +144,10 @@ private fun parseGroup(
         errors += "Row ${first.line}: Workout Name is blank."
         return null
     }
+    if (strongIdentity(rawDate, name).length > MAX_TEXT_LENGTH) {
+        errors += "Row ${first.line}: Workout Name is too long to store."
+        return null
+    }
     if (workoutNotes.size > 1) {
         errors += "Row ${first.line}: Workout Notes conflict inside one workout: ${workoutNotes.joinToString(" | ")}."
         return null
@@ -154,8 +158,12 @@ private fun parseGroup(
         errors += "Row ${first.line}: Invalid Date \"$rawDate\"."
         return null
     }
+    if (startedAt <= 0) {
+        errors += "Row ${first.line}: Invalid Date \"$rawDate\"."
+        return null
+    }
     val durationSeconds = rawDuration.toLongOrNull()
-    if (durationSeconds == null || durationSeconds < 0) {
+    if (durationSeconds == null || durationSeconds !in 0..86_400) {
         errors += "Row ${first.line}: Invalid Duration (sec) \"$rawDuration\"."
         return null
     }
@@ -183,6 +191,10 @@ private fun parseGroup(
         val exerciseName = row.cell(column, "Exercise Name")
         if (exerciseName.isEmpty()) {
             errors += "Row ${row.line}: Exercise Name is blank."
+            return null
+        }
+        if (exerciseName.length > MAX_TEXT_LENGTH) {
+            errors += "Row ${row.line}: Exercise Name is longer than $MAX_TEXT_LENGTH characters."
             return null
         }
         if (exerciseName != lastExercise) {

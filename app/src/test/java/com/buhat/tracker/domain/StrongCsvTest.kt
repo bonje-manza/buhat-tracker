@@ -250,6 +250,34 @@ class StrongCsvTest {
     }
 
     @Test
+    fun `names that cannot fit a backup block with the row number`() {
+        val workoutName = assertThrows(StrongCsvException::class.java) {
+            parseRow(row(name = "W".repeat(174), setOrder = "1"))
+        }
+        assertTrue("was '${workoutName.message}'", workoutName.message.orEmpty().contains("Row 2"))
+        assertTrue("was '${workoutName.message}'", workoutName.message.orEmpty().contains("too long"))
+
+        val exerciseName = assertThrows(StrongCsvException::class.java) {
+            parseRow(row(exercise = "E".repeat(201), setOrder = "1"))
+        }
+        assertTrue("was '${exerciseName.message}'", exerciseName.message.orEmpty().contains("Row 2"))
+        assertTrue("was '${exerciseName.message}'", exerciseName.message.orEmpty().contains("Exercise Name"))
+    }
+
+    @Test
+    fun `nonpositive start and absurd duration block`() {
+        val date = assertThrows(StrongCsvException::class.java) {
+            parseRow(row(date = "0001-01-01 00:00:00", setOrder = "1"))
+        }
+        assertTrue("was '${date.message}'", date.message.orEmpty().contains("Invalid Date"))
+
+        val duration = assertThrows(StrongCsvException::class.java) {
+            parseRow(row(setOrder = "1", duration = "9223372036854775807"))
+        }
+        assertTrue("was '${duration.message}'", duration.message.orEmpty().contains("Duration"))
+    }
+
+    @Test
     fun `zero duration workout keeps sets inside start and finish`() {
         val workout = parseRow(
             row(setOrder = "1", duration = "0"),
