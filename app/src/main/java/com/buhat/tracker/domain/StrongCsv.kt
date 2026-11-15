@@ -19,7 +19,7 @@ class StrongCsvException(messages: List<String>) : Exception(
             append(message.take(MAX_ERROR_LENGTH))
         }
         val remaining = messages.size - MAX_REPORTED_ERRORS
-        if (remaining > 0) append("\nAnd $remaining more rows failed.")
+        if (remaining > 0) append("\nAnd $remaining more errors.")
     },
 )
 

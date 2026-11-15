@@ -224,9 +224,10 @@ class StrongImportRepositoryTest {
     @Test
     fun mappingTwoSourceNamesToOneExerciseMergesIntoOneRoundTrippableCard() = runTest {
         val text = csv(
+            row(exercise = "Seated Row (Cable)", setOrder = "W", weight = "40", reps = "10", rpe = ""),
             row(exercise = "Seated Row (Cable)", setOrder = "1", weight = "60", reps = "10"),
             row(exercise = "Cable Row", setOrder = "Note", weight = "", reps = "", rpe = "", notes = "paused reps"),
-            row(exercise = "Cable Row", setOrder = "1", weight = "65", reps = "8"),
+            row(exercise = "Cable Row", setOrder = "F", weight = "65", reps = "8"),
         )
         val target = seededId("exercise", "Seated Cable Row")
 
@@ -244,9 +245,15 @@ class StrongImportRepositoryTest {
         val exercise = history.exercises.single()
         assertEquals(target, exercise.exerciseId)
         assertEquals("Seated Row (Cable)", exercise.exerciseNameSnapshot)
-        assertEquals(listOf(60.0, 65.0), exercise.sets.map { it.weightKg })
-        assertEquals(listOf(1, 2), exercise.sets.map { it.workingIndex })
+        assertEquals(listOf(SetType.WARMUP, SetType.WORKING, SetType.FAILURE), exercise.sets.map { it.setType })
+        assertEquals(listOf(null, 1, 2), exercise.sets.map { it.workingIndex })
+        assertEquals(listOf(40.0, 60.0, 65.0), exercise.sets.map { it.weightKg })
         assertEquals("paused reps", exercise.note)
+
+        val prescription = db.dao().allSessionExercises().single()
+        assertEquals(2, prescription.workingSets)
+        assertEquals(8, prescription.repMin)
+        assertEquals(10, prescription.repMax)
     }
 
     @Test

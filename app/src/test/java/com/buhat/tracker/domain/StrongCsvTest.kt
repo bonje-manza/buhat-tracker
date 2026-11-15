@@ -270,7 +270,7 @@ class StrongCsvTest {
         val capped = assertThrows(StrongCsvException::class.java) {
             parseStrongCsv(csv(*many.toTypedArray()))
         }
-        assertTrue("was '${capped.message}'", capped.message.orEmpty().contains("And 5 more rows failed."))
+        assertTrue("was '${capped.message}'", capped.message.orEmpty().contains("And 5 more errors."))
         assertTrue("length ${capped.message!!.length}", capped.message!!.length < 10_000)
 
         val longValue = assertThrows(StrongCsvException::class.java) {
