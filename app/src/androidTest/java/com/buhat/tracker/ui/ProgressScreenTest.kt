@@ -185,6 +185,10 @@ class ProgressScreenTest {
         compose.onNodeWithTag("profile-card-name", useUnmergedTree = true).assertTextEquals("Set up profile")
         compose.onNodeWithTag("tab-Progress").performClick()
         awaitTag("progress-empty")
+        compose.onNodeWithTag("segmented-History").performClick()
+        awaitTag("workout-history-empty")
+        compose.onNodeWithTag("segmented-Exercise").performClick()
+        awaitTag("progress-empty")
         val id = runBlocking { container.recordBenchWorkout(daysAgo = 40) }
         compose.onNodeWithTag("tab-Home").performClick()
         awaitValue("home-trend-latest", "106.7 kg")
@@ -418,6 +422,78 @@ class ProgressScreenTest {
         awaitTag("progress-exercise-picker")
         progressItem("history-$id").performClick()
         compose.onNodeWithText("RIR 4+").assertExists()
+    }
+
+    @Test fun workoutHistoryListsEveryFinishedWorkoutWithNotesUnitsAndDeletion() {
+        val (push, pull) = runBlocking {
+            val repo = container.repository
+            repo.saveExercisePreferences(benchId, "LB", null, null, false)
+            val push = container.recordBenchWorkout()
+            // Pull Day A starts with Lat Pulldown and never touches Bench Press.
+            val pull = repo.startSession(seededId("template", "Pull Day A"))
+            val lat = repo.sessionExercises(pull).first().first()
+            repo.logSet(lat.id, SetType.WORKING, 60.0, 8, 2)
+            repo.finishSession(pull)
+            // Strong imports carry a workout note and a per-exercise note. Both must show in history.
+            container.database.dao().updateSession(repo.session(pull)!!.copy(note = "Felt strong today"))
+            container.database.dao().updateSessionExercise(lat.copy(note = "Cable stack felt heavy"))
+            push to pull
+        }
+        compose.onNodeWithTag("tab-Progress").performClick()
+        awaitTag("segmented-History")
+        compose.onNodeWithTag("segmented-Exercise").assertIsSelected()
+        compose.onNodeWithTag("segmented-History").performClick()
+        // The selected exercise is Bench Press, so the Pull Day workout proves no exercise choice is needed.
+        awaitTag("workout-history-$push")
+        awaitTag("workout-history-$pull")
+
+        progressItem("workout-history-$pull").performClick()
+        compose.onNodeWithText("Felt strong today").assertExists()
+        compose.onNodeWithText("Lat Pulldown").assertExists()
+        compose.onNodeWithText("Cable stack felt heavy").assertExists()
+        compose.onNodeWithText("60 kg × 8").assertExists()
+        compose.onNodeWithTag("workout-history-pr-$pull", useUnmergedTree = true).assertExists()
+
+        progressItem("workout-history-$push").performClick()
+        // Bench is lb for this exercise only: 100 kg x 2.20462 = 220.462 -> 220.5 lb, 80 kg -> 176.4 lb.
+        compose.onNodeWithText("220.5 lb × 20").assertExists()
+        compose.onNodeWithText("176.4 lb × 10").assertExists()
+        compose.onNodeWithTag("workout-history-pr-$push", useUnmergedTree = true).assertExists()
+
+        compose.activityRule.scenario.recreate()
+        awaitTag("segmented-History")
+        compose.onNodeWithTag("segmented-History").assertIsSelected()
+
+        progressItem("workout-history-$pull").performClick()
+        progressItem("delete-workout-$pull").performClick()
+        compose.onNodeWithTag("confirm-delete-workout").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("workout-history-$pull")).fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("tab-Home").performClick()
+        awaitValue("home-workouts-value", "1")
+    }
+
+    @Test fun workoutHistoryShowsReplacedExerciseAsTwoOccurrencesWithSideLabels() {
+        val (sessionId, firstSet, secondSet) = runBlocking {
+            val repo = container.repository
+            repo.saveExercisePreferences(benchId, null, null, null, true)
+            val id = repo.startSession(seededId("template", "Push Day A"))
+            val bench = repo.sessionExercises(id).first().first()
+            val first = repo.logSet(bench.id, SetType.WORKING, 70.0, 5, 2, side = SetSide.LEFT)
+            val replacement = repo.replaceSessionExercise(bench.id, benchId)
+            val second = repo.logSet(replacement, SetType.WORKING, 80.0, 10, 2, side = SetSide.RIGHT)
+            repo.finishSession(id)
+            Triple(id, first, second)
+        }
+        compose.onNodeWithTag("tab-Progress").performClick()
+        awaitTag("segmented-History")
+        compose.onNodeWithTag("segmented-History").performClick()
+        progressItem("workout-history-$sessionId").performClick()
+        // Two Bench Press occurrences in one workout stay separate, each with its own set.
+        compose.onAllNodesWithText("Bench Press").assertCountEquals(2)
+        progressItem("history-set-$firstSet").assertTextContains("L1", substring = true)
+        progressItem("history-set-$firstSet").assertTextContains("70 kg × 5", substring = true)
+        progressItem("history-set-$secondSet").assertTextContains("R1", substring = true)
+        progressItem("history-set-$secondSet").assertTextContains("80 kg × 10", substring = true)
     }
 
     private fun recordSingleSet(weight: Double, reps: Int, daysAgo: Int): String = runBlocking {

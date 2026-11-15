@@ -86,6 +86,8 @@ private data class ProgressData(
 
 private data class ExerciseHistory(val exerciseId: String, val sessions: List<HistorySession>)
 
+private enum class ProgressMode { EXERCISE, HISTORY }
+
 @Composable
 fun ProgressScreen(
     repository: BuhatRepository,
@@ -111,6 +113,7 @@ fun ProgressScreen(
             choicesFailed = true
         }
     }
+    var mode by rememberSaveable { mutableStateOf(ProgressMode.EXERCISE) }
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var expandedId by rememberSaveable(selectedExerciseId) { mutableStateOf<String?>(null) }
@@ -148,6 +151,20 @@ fun ProgressScreen(
             historyFailed = true
         }
     }
+    @SuppressLint("ProduceStateDoesNotAssignValue") // Lint cannot see the assignment inside collect.
+    val wholeHistory by produceState<List<HistorySession>?>(null, repository, mode, attempt) {
+        if (mode != ProgressMode.HISTORY) {
+            value = null
+            return@produceState
+        }
+        try {
+            repository.history().collect { value = it.asReversed() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            historyFailed = true
+        }
+    }
     val loadError = choicesFailed || historyFailed
     val historyRows = exerciseHistory?.takeIf { it.exerciseId == exerciseId }
     val history = historyRows?.sessions.orEmpty()
@@ -166,6 +183,10 @@ fun ProgressScreen(
     val summary = remember(history, exerciseId, side) { exerciseStats(history, exerciseId, side) }
     // The loaded rows only hold the selected exercise, so these set ids are its all-time PRs.
     val prs = remember(history) { prSetIds(history) }
+    val allPrs = remember(wholeHistory) { prSetIds(wholeHistory.orEmpty()) }
+    val units = remember(loaded?.exercises, unit) {
+        loaded?.exercises.orEmpty().associate { it.id to it.effectiveUnit(unit) }
+    }
     val workouts = remember(history, exerciseId) {
         history.asReversed().filter { session -> session.exercises.any { it.exerciseId == exerciseId && it.sets.isNotEmpty() } }
     }
@@ -179,13 +200,27 @@ fun ProgressScreen(
             Text("Strength trends", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             Text("Progress", style = MaterialTheme.typography.headlineMedium)
         }
+        item {
+            BuhatSegmentedControl(listOf("Exercise", "History"), mode.ordinal, { mode = ProgressMode.entries[it] })
+        }
         if (loadError) {
             item {
                 Text("Could not load progress.", color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = { attempt++ }, modifier = Modifier.testTag("progress-retry")) { Text("Retry") }
             }
-        } else if (loaded == null || historyRows == null) {
+        } else if (loaded == null || (if (mode == ProgressMode.HISTORY) wholeHistory == null else historyRows == null)) {
             item { Text("Loading...", modifier = Modifier.testTag("progress-loading")) }
+        } else if (mode == ProgressMode.HISTORY) {
+            val historyWorkouts = wholeHistory.orEmpty()
+            if (historyWorkouts.isEmpty()) {
+                item { BuhatEmptyState("No workouts yet", "Finish a workout to see it here.", Modifier.testTag("workout-history-empty")) }
+            }
+            items(historyWorkouts, key = { it.id }) { workout ->
+                val expanded = expandedId == workout.id
+                WholeWorkoutCard(workout, units, unit, allPrs, expanded,
+                    onToggle = { expandedId = if (expanded) null else workout.id },
+                    onDelete = { pendingDeleteId = workout.id; deleteError = null })
+            }
         } else {
             item {
                 OutlinedButton(
@@ -259,7 +294,7 @@ fun ProgressScreen(
             confirmButton = { TextButton(onClick = { pickerOpen = false }, modifier = Modifier.testTag("progress-picker-close")) { Text("Close") } },
         )
     }
-    val pending = history.firstOrNull { it.id == pendingDeleteId }
+    val pending = (history + wholeHistory.orEmpty()).firstOrNull { it.id == pendingDeleteId }
     if (pending != null) {
         AlertDialog(
             onDismissRequest = { if (!deleting) pendingDeleteId = null },
@@ -328,27 +363,71 @@ private fun WorkoutHistoryCard(
         }
         if (expanded) {
             Spacer(Modifier.height(8.dp))
-            val positions = remember(exercise.sets) {
-                SetSide.entries.flatMap { numberWorkingSets(exercise.sets, it) }
-                    .associate { it.set.id to it.position }
-            }
-            exercise.sets.forEach { set ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp).semantics(mergeDescendants = true) {}
-                    .testTag("history-set-${set.id}"), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    set.side?.let { Text("${if (it == SetSide.LEFT) "L" else "R"}${positions[set.id] ?: ""}") }
-                    SetTypeBadge(set.setType)
-                    Column(Modifier.weight(1f)) {
-                        Text("${formatWeight(set.weightKg, unit)} × ${set.reps}")
-                        set.rir?.let { Text("RIR ${rirLabel(it)}", style = MaterialTheme.typography.bodySmall) }
-                    }
-                    if (set.id in prs) PrBadge()
+            val positions = remember(exercise.sets) { workingPositions(exercise.sets) }
+            exercise.sets.forEach { set -> HistorySetLine(set, unit, positions[set.id], prs) }
+            TextButton(onClick = onDelete, modifier = Modifier.testTag("delete-workout-${workout.id}")) { Text("Delete workout") }
+        }
+    }
+}
+
+@Composable
+private fun WholeWorkoutCard(
+    workout: HistorySession,
+    units: Map<String, WeightUnit>,
+    globalUnit: WeightUnit,
+    prs: Set<String>,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    BuhatCard {
+        Column(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = onToggle)
+            .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
+            .testTag("workout-history-${workout.id}")) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(workout.templateNameSnapshot, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (workout.exercises.any { exercise -> exercise.sets.any { it.id in prs } }) {
+                    PrBadge(Modifier.testTag("workout-history-pr-${workout.id}"))
                 }
+            }
+            Text(workoutDate(workout.finishedAt), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium)
+            workout.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        }
+        if (expanded) {
+            workout.exercises.forEach { exercise ->
+                Spacer(Modifier.height(12.dp))
+                Text(exercise.exerciseNameSnapshot, style = MaterialTheme.typography.titleSmall)
+                exercise.note?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                val unit = units[exercise.exerciseId] ?: globalUnit
+                val positions = remember(exercise.sets) { workingPositions(exercise.sets) }
+                exercise.sets.forEach { set -> HistorySetLine(set, unit, positions[set.id], prs) }
             }
             TextButton(onClick = onDelete, modifier = Modifier.testTag("delete-workout-${workout.id}")) { Text("Delete workout") }
         }
     }
 }
+
+@Composable
+private fun HistorySetLine(set: LoggedSetRecord, unit: WeightUnit, position: Int?, prs: Set<String>) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp).semantics(mergeDescendants = true) {}
+        .testTag("history-set-${set.id}"), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        set.side?.let { Text("${if (it == SetSide.LEFT) "L" else "R"}${position ?: ""}") }
+        SetTypeBadge(set.setType)
+        Column(Modifier.weight(1f)) {
+            Text("${formatWeight(set.weightKg, unit)} × ${set.reps}")
+            set.rir?.let { Text("RIR ${rirLabel(it)}", style = MaterialTheme.typography.bodySmall) }
+        }
+        if (set.id in prs) PrBadge()
+    }
+}
+
+private fun workingPositions(sets: List<LoggedSetRecord>): Map<String, Int> =
+    SetSide.entries.flatMap { numberWorkingSets(sets, it) }.associate { it.set.id to it.position }
 
 @Composable
 internal fun StrengthTrend(
